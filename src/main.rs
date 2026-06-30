@@ -183,6 +183,7 @@ fn main() {
             _ => {}
         }
     }
+    println("{:?}", faces);
 
     // let frame = 6;
 
