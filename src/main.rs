@@ -183,7 +183,7 @@ fn rotate(p: Point, angle: f64) -> Point {
 }
 
 fn main() {
-    let contents: String = fs::read_to_string("teapot_final5.obj").unwrap();
+    let contents: String = fs::read_to_string("teapot.obj").unwrap();
     let mut faces: Vec<Face> = vec![];
     let mut v: Vec<Point> = vec![];
     let mut vn: Vec<Point> = vec![];
