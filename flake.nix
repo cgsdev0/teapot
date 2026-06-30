@@ -15,7 +15,7 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [ wabt cargo rustc llvmPackages.bintools ];
+        packages = with pkgs; [ rustfmt wabt cargo rustc llvmPackages.bintools ];
       };
     };
 }
