@@ -37,24 +37,63 @@ fn draw_line(p1: Point, p2: Point, frame: &mut [u8]) {
     println!("PD{},{}", x, y);
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct FacePart {
-    vertex: u64,
-    normal: u64,
+    vertex: Point,
+    normal: Point,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct Face {
-    x: FacePart,
-    y: FacePart,
-    z: FacePart,
+    eyes: FacePart,
+    noes: FacePart,
+    ears: FacePart,
 }
 
-#[derive(Copy, Clone)]
+impl Face {
+    fn calc_centroid(&self) -> Point {
+        let a = self.eyes.vertex;
+        let b = self.noes.vertex;
+        let c = self.ears.vertex;
+        Point {
+            x: (a.x + b.x + c.x) / 3.0,
+            y: (a.y + b.y + c.y) / 3.0,
+            z: (a.z + b.z + c.z) / 3.0,
+        }
+        .normalize()
+    }
+    fn calc_normal(&self) -> Point {
+        let a = self.eyes.vertex - self.noes.vertex;
+        let b = self.ears.vertex - self.noes.vertex;
+        Point {
+            x: a.y * b.z - a.z * b.y,
+            y: a.z * b.x - a.x * b.z,
+            z: a.x * b.y - a.y * b.x,
+        }
+        .normalize()
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 struct Point {
     x: f64,
     y: f64,
     z: f64,
+}
+
+impl Point {
+    fn normalize(&self) -> Point {
+        let mag = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
+        Point {
+            x: self.x / mag,
+            y: self.y / mag,
+            z: self.z / mag,
+        }
+    }
+
+    fn dot(&self, other: &Point) -> f64 {
+        self.x * other.x + self.y * other.y + self.z * other.z
+    }
 }
 
 impl Add for Point {
@@ -96,7 +135,10 @@ fn paper(p: Point) -> (u16, u16) {
 }
 
 fn canvas(p: Point) -> (f64, f64) {
-    (((p.x + 1.0) / 2.0 * 1000.0), ((-p.y + 1.0) / 2.0 * 1000.0))
+    (
+        ((p.x + 1.0) / 2.0 * 765.0 + 100.0),
+        ((-p.y + 1.0) / 2.0 * 765.0),
+    )
 }
 
 fn screen(p: Point) -> (u16, u16) {
@@ -155,15 +197,15 @@ fn main() {
                     .map(|p| {
                         let parts = p.split("/").collect::<Vec<_>>();
                         FacePart {
-                            vertex: parts[0].parse::<u64>().unwrap(),
-                            normal: parts[2].parse::<u64>().unwrap(),
+                            vertex: v[parts[0].parse::<usize>().unwrap() - 1],
+                            normal: vn[parts[2].parse::<usize>().unwrap() - 1],
                         }
                     })
                     .collect::<Vec<_>>();
                 faces.push(Face {
-                    x: parts[0],
-                    y: parts[1],
-                    z: parts[2],
+                    eyes: parts[0],
+                    noes: parts[1],
+                    ears: parts[2],
                 });
             }
             "v" => {
@@ -183,18 +225,53 @@ fn main() {
             _ => {}
         }
     }
-    println("{:?}", faces);
-
     // let frame = 6;
 
-    //     let dt = 3.1415 / 2.0;
-    //     for set in edges {
-    //         for pp in set.windows(2) {
-    //             let [p, p2] = pp else { panic!("haha"); };
-    //             let p = t2(project(translate(rotate(points[p-1], dt))));
-    //             let p2 = t2(project(translate(rotate(points[p2-1], dt))));
-    //             draw_line_paper(p, p2, 0, 0);
-    //             // draw_line_js(p, p2, 0, 0);
-    //         }
-    // }
+    let dt = 3.1415 / 2.0;
+    let camera = Point {
+        x: 0.0,
+        y: 0.0,
+        z: 1.0,
+    };
+    let mut count = 0;
+    for face in faces {
+        let pface = Face {
+            eyes: FacePart {
+                vertex: translate(rotate(face.eyes.vertex, dt)),
+                normal: face.eyes.normal,
+            },
+            noes: FacePart {
+                vertex: translate(rotate(face.noes.vertex, dt)),
+                normal: face.noes.normal,
+            },
+            ears: FacePart {
+                vertex: translate(rotate(face.ears.vertex, dt)),
+                normal: face.ears.normal,
+            },
+        };
+        let n = pface.calc_normal();
+        let c = pface.calc_centroid();
+        let which_way = n.dot(&c).signum();
+        if which_way < 0.0 {
+            continue;
+        }
+        count += 1;
+
+        let set = vec![
+            face.eyes.vertex,
+            face.noes.vertex,
+            face.ears.vertex,
+            face.eyes.vertex,
+        ];
+        for pp in set.windows(2) {
+            let [p, p2] = pp else {
+                panic!("haha");
+            };
+            let p = t2(project(translate(rotate(*p, dt))));
+            let p2 = t2(project(translate(rotate(*p2, dt))));
+            // draw_line_paper(p, p2, 0, 0);
+            draw_line_js(p, p2, 0, 0);
+        }
+    }
+    println!("console.log('{}');", count);
 }
