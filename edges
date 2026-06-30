@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+model=$1
+
+cat "$model" \
+  | grep '^f '  \
+  | sed 's@\([^/ ]*\)/[^ ]*@\1@g' > faces
+
+
+echo "let points = ["
+cat "$model" \
+  | grep '^v ' \
+  | while read -r v x y z; do
+    echo "Point{ x: $x, y: $y, z: $z },"
+  done
+echo "];"
+
+echo "let edges = ["
+while read f a b c; do
+  echo "$((a>b?b:a)) $((a>b?a:b))"
+  echo "$((a>c?c:a)) $((a>c?a:c))"
+  echo "$((c>b?b:c)) $((c>b?c:b))"
+done < faces \
+  | sort -n \
+  | uniq \
+  | tr ' ' , \
+  | sed 's/^/[/;s/$/].as_slice(),/'
+echo "];"
