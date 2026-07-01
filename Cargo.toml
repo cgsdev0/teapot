@@ -3,3 +3,6 @@ name = "something"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+ordered-float = "5.3.0"
+

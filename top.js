@@ -4,6 +4,8 @@ const ctx = canvas.getContext("2d");
 
 ctx.fillStyle = "black";
 ctx.fillRect(0, 0, canvas.width, canvas.height);
+ctx.fillStyle = "#ffffff30";
 
-ctx.lineWidth = 2;
-ctx.strokeStyle = "lime";
+ctx.lineWidth = 1;
+ctx.strokeStyle = "transparent";
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
