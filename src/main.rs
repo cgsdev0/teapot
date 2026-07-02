@@ -23,7 +23,12 @@ static DONT_RECURSE: AtomicBool = AtomicBool::new(false);
 static SKIP: AtomicI32 = AtomicI32::new(0);
 
 #[allow(dead_code)]
-fn cursed_subtraction_debug(t: &Triangle, cutter: &Triangle, i: &Vec<Intersection>) {
+fn cursed_subtraction_debug(
+    t: &Triangle,
+    cutter: &Triangle,
+    i: &Vec<Intersection>,
+    want_panic: bool,
+) {
     let skip = SKIP.load(Ordering::Relaxed);
     if skip < 0 {
         SKIP.store(skip + 1, Ordering::Relaxed);
@@ -40,47 +45,71 @@ fn cursed_subtraction_debug(t: &Triangle, cutter: &Triangle, i: &Vec<Intersectio
     // bb.expand(&cutter.a);
     // bb.expand(&cutter.b);
     // bb.expand(&cutter.c);
-    bb.draw();
     let t2 = bb.reproject_triangle(&t);
     let c2 = bb.reproject_triangle(&cutter);
-    draw_triangle_js(&t2, Color::Lhs);
-    draw_triangle_js(&c2, Color::Rhs);
-    let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
-    for point in vec![t2.a, t2.b, t2.c, c2.a, c2.b, c2.c] {
-        match points.get(&point) {
-            Some(count) => {
-                points.insert(point, count + 1);
-            }
-            None => {
-                points.insert(point, 1);
+    let draw = |tris: Vec<Triangle>| {
+        bb.draw();
+        draw_triangle_js(&t2, Color::Lhs);
+        draw_triangle_js(&c2, Color::Rhs);
+        let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
+        for point in vec![t2.a, t2.b, t2.c, c2.a, c2.b, c2.c] {
+            match points.get(&point) {
+                Some(count) => {
+                    points.insert(point, count + 1);
+                }
+                None => {
+                    points.insert(point, 1);
+                }
             }
         }
-    }
-    for (point, count) in points.iter() {
-        draw_point_js(
-            *point,
-            match count {
-                1 => "magenta",
-                _ => "yellow",
-            },
-            false,
-        );
-    }
-    for aye in i {
-        let eye = bb.reproject(&aye.point);
-        if !aye.projected && !aye.real {
-            continue;
+        for (point, count) in points.iter() {
+            draw_point_js(
+                *point,
+                match count {
+                    1 => "magenta",
+                    _ => "yellow",
+                },
+                false,
+            );
         }
-        draw_point_js(
-            eye,
-            if aye.projected { "#33aaff" } else { "#fff" },
-            !aye.real,
-        );
-    }
-    let split = t2 - c2;
-    eprintln!("{} splits", split.len());
-    for t in split {
-        draw_triangle_js(&t, Color::Difference);
+        for aye in i {
+            let eye = bb.reproject(&aye.point);
+            if !aye.projected && !aye.real {
+                continue;
+            }
+            draw_point_js(
+                eye,
+                if aye.projected { "#33aaff" } else { "#fff" },
+                !aye.real,
+            );
+        }
+        for t in tris {
+            draw_triangle_js(&bb.reproject_triangle(&t), Color::Difference);
+        }
+    };
+    if want_panic {
+        let res = std::panic::catch_unwind(|| {
+            // we don't care about the result;
+            // either this panics and we draw,
+            // or it doesn't panic and we don't care anyways.
+            let _ = *t - *cutter;
+        });
+        match res {
+            Err(_) => {
+                eprintln!("PANIC CAPTURED");
+                draw(vec![]);
+            }
+            Ok(_) => {
+                // no panic? lame
+                eprintln!("false alarm, continuing");
+                DONT_RECURSE.store(false, Ordering::Relaxed);
+                return;
+            }
+        }
+    } else {
+        let split = *t - *cutter;
+        eprintln!("{} splits", split.len());
+        draw(split);
     }
     // eprintln!("{:?}\n\n{:?}\n\n{:?}", bb, t, cutter);
     std::process::exit(0);
@@ -102,7 +131,7 @@ fn draw_point_js(point: Point, color: &str, open: bool) {
 fn draw_triangle_js(t: &Triangle, color: Color) {
     match color {
         Color::Lime => {
-            println!("ctx.strokeStyle = 'lime';");
+            println!("ctx.strokeStyle = 'transparent';");
         }
         Color::Red => {
             println!("ctx.strokeStyle = 'red';");
@@ -416,7 +445,10 @@ impl Sub for Triangle {
     type Output = Vec<Triangle>;
     fn sub(self, other: Triangle) -> Vec<Triangle> {
         let i = self.intersections(&other);
-        let real = i.iter().filter(|i| i.real).collect::<Vec<_>>();
+        let real = i
+            .iter()
+            .filter(|i| i.real && self.points().all(|p| i.point.dist2(&p) > 0.0.into()))
+            .collect::<Vec<_>>();
         let imaginary = i.iter().filter(|i| !i.real).collect::<Vec<_>>();
         let projected = i.iter().filter(|i| i.projected).collect::<Vec<_>>();
         let sa = other.contains(&self.a);
@@ -433,27 +465,25 @@ impl Sub for Triangle {
         eprintln!("scount: {}", scount);
         eprintln!("ocount: {}\n", ocount);
         match (real.len(), projected.len(), scount, ocount) {
-            (0, _, _, _) => {
-                return vec![self];
-            }
             (_, _, 0, 3) => {
                 // we are getting a hole bored out of the middle oh no
-                cursed_subtraction_debug(&self, &other, &i);
+                cursed_subtraction_debug(&self, &other, &i, false);
             }
             (_, _, 3, 0) => {
-                return vec![self];
+                return vec![];
                 // we have been fully subtracted
                 // cursed_subtraction_debug(&self, &other, &i);
             }
+            (0, _, _, _) => {
+                // no intersections, all good!
+                return vec![self];
+            }
             (6, 0, 0, 0) => {
-                for l in self.lines() {
-                    let on_this_line = real.iter().filter(|i| i.on_line(l)).collect::<Vec<_>>();
-                    if on_this_line.is_empty() {
-                        panic!("uh oh");
-                    }
-                }
+                // star of david situation
+                cursed_subtraction_debug(&self, &other, &i, false);
             }
             (4, _, 0, 0) => {
+                cursed_subtraction_debug(&self, &other, &i, true);
                 let (lines_with_intersections, lines_without_intersections) = self
                     .lines()
                     .into_iter()
@@ -478,10 +508,11 @@ impl Sub for Triangle {
                     let next = next.unwrap();
                     points.push(next.point);
                     let l = next.other_line(l);
-                    let next = real
-                        .iter()
-                        .find(|i| i.on_line(l) && i.point != next.point)
-                        .unwrap();
+                    let Some(next) = real.iter().find(|i| i.on_line(l) && i.point != next.point)
+                    else {
+                        // we tried our best
+                        break;
+                    };
                     points.push(next.point);
                     let l = next.other_line(l);
                     if l.has_point(points[0]) {
@@ -502,35 +533,35 @@ impl Sub for Triangle {
                 // cursed_subtraction_debug(&self, &other, &i);
             }
             (4, 0, 1, 0) => {
-                cursed_subtraction_debug(&self, &other, &i);
-                // for p in self.points().filter(|p| !other.contains(p)) {
-                //     let edges = self.lines().into_iter().filter(|l| l.has_point(p));
-                //     let intersections: Vec<Intersection> = edges
-                //         .map(|l| {
-                //             real.iter()
-                //                 .filter(|i| i.on_line(l))
-                //                 .fold(
-                //                     (None, f64::INFINITY.into()),
-                //                     |(mut best, mut best_dist): (Option<Intersection>, F64),
-                //                      &intersection| {
-                //                         let d = intersection.point.dist2(&p);
-                //                         if d < best_dist {
-                //                             best = Some(*intersection);
-                //                             best_dist = d;
-                //                         }
-                //                         (best, best_dist)
-                //                     },
-                //                 )
-                //                 .0
-                //                 .unwrap()
-                //         })
-                //         .collect();
-                //     polys.push(ConvexPolygon(vec![
-                //         p,
-                //         intersections[0].point,
-                //         intersections[1].point,
-                //     ]));
-                // }
+                cursed_subtraction_debug(&self, &other, &i, true);
+                for p in self.points().filter(|p| !other.contains(p)) {
+                    let edges = self.lines().into_iter().filter(|l| l.has_point(p));
+                    let intersections: Vec<Intersection> = edges
+                        .map(|l| {
+                            real.iter()
+                                .filter(|i| i.on_line(l))
+                                .fold(
+                                    (None, f64::INFINITY.into()),
+                                    |(mut best, mut best_dist): (Option<Intersection>, F64),
+                                     &intersection| {
+                                        let d = intersection.point.dist2(&p);
+                                        if d < best_dist {
+                                            best = Some(*intersection);
+                                            best_dist = d;
+                                        }
+                                        (best, best_dist)
+                                    },
+                                )
+                                .0
+                                .unwrap()
+                        })
+                        .collect();
+                    polys.push(ConvexPolygon(vec![
+                        p,
+                        intersections[0].point,
+                        intersections[1].point,
+                    ]));
+                }
             }
             (2, _, 1, 0) => {
                 polys.push(ConvexPolygon(
@@ -550,6 +581,7 @@ impl Sub for Triangle {
                 ));
             }
             (2, _, 2, 0) => {
+                cursed_subtraction_debug(&self, &other, &i, true);
                 let starting_point = self.points().find(|p| !other.contains(p)).unwrap();
                 polys.push(ConvexPolygon(vec![
                     starting_point,
@@ -558,6 +590,7 @@ impl Sub for Triangle {
                 ]));
             }
             (2, 2, 0, 1) => {
+                // TODO: this one is causing some overdraw
                 let contained_point = other.points().find(|p| self.contains(p)).unwrap();
                 let cursed =
                     projected[0].on_line(projected[1].a) || projected[0].on_line(projected[1].b);
@@ -626,7 +659,7 @@ impl Sub for Triangle {
                 }
             }
             _ => {
-                // cursed_subtraction_debug(&self, &other, &i);
+                cursed_subtraction_debug(&self, &other, &i, false);
             }
         };
         polys
