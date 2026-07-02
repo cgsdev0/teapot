@@ -478,6 +478,30 @@ impl Sub for Triangle {
                 eprintln!("\n\n\n");
                 // cursed_subtraction_debug(&self, &other, &i);
             }
+            (4, 0, 1, 0) => {
+                for p in self.points().filter(|p| !other.contains(p)) {
+                    eprintln!("uncontained point in 4,0,1,0: {:?}", p);
+                    let edges = self.lines().into_iter().filter(|l| l.has_point(p));
+                    let intersections: Vec<Intersection> = edges.map(|l| {
+                        real.iter().filter(|i| i.on_line(l))
+                            .fold(
+                                (None, f64::INFINITY.into()),
+                                |(mut best, mut best_dist): (Option<Intersection>, F64),
+                                 &intersection| {
+                                    let d = intersection.point.dist2(&p);
+                                    if d < best_dist {
+                                        best = Some(*intersection);
+                                        best_dist = d;
+                                    }
+                                    (best, best_dist)
+                                },
+                            )
+                            .0
+                            .unwrap()
+                    }).collect();
+                    polys.push(ConvexPolygon(vec![ p, intersections[0].point, intersections[1].point ]));
+                }
+            }
             (2, _, 1, 0) => {
                 polys.push(ConvexPolygon(
                     real.iter()
@@ -494,7 +518,6 @@ impl Sub for Triangle {
                         .chain(real.iter().rev().map(|i| i.point))
                         .collect(),
                 ));
-                // cursed_subtraction_debug(&self, &other, &i);
             }
             (2, _, 2, 0) => {
                 let starting_point = self.points().find(|p| !other.contains(p)).unwrap();
@@ -555,7 +578,15 @@ impl Sub for Triangle {
         polys
             .iter()
             .flat_map(|poly| poly.triangulate())
-            .filter(|tri| tri.area() > 0.005)
+            .filter(|tri| {
+                let area = tri.area();
+                if area > 0.003 {
+                    true
+                } else {
+                    eprintln!("throwing out a triangle of area {}: {:?}", area, tri);
+                    false
+                }
+            })
             .collect()
     }
 }
