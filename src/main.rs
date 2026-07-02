@@ -17,12 +17,18 @@ fn draw_line_js(p1: Point, p2: Point) {
     println!("ctx.lineTo({}, {});", x, y);
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 static DONT_RECURSE: AtomicBool = AtomicBool::new(false);
+static SKIP: AtomicI32 = AtomicI32::new(0);
 
 #[allow(dead_code)]
 fn cursed_subtraction_debug(t: &Triangle, cutter: &Triangle, i: &Vec<Intersection>) {
+    let skip = SKIP.load(Ordering::Relaxed);
+    if skip < 0 {
+        SKIP.store(skip + 1, Ordering::Relaxed);
+        return;
+    }
     if DONT_RECURSE.load(Ordering::Relaxed) {
         return;
     }
@@ -31,9 +37,9 @@ fn cursed_subtraction_debug(t: &Triangle, cutter: &Triangle, i: &Vec<Intersectio
     bb.expand(&t.a);
     bb.expand(&t.b);
     bb.expand(&t.c);
-    bb.expand(&cutter.a);
-    bb.expand(&cutter.b);
-    bb.expand(&cutter.c);
+    // bb.expand(&cutter.a);
+    // bb.expand(&cutter.b);
+    // bb.expand(&cutter.c);
     bb.draw();
     let t2 = bb.reproject_triangle(&t);
     let c2 = bb.reproject_triangle(&cutter);
@@ -163,6 +169,9 @@ struct Intersection {
 }
 
 impl Intersection {
+    fn lines(&self) -> impl Iterator<Item = Line> {
+        [self.a, self.b].into_iter()
+    }
     fn on_line(&self, line: Line) -> bool {
         self.a == line || self.b == line
     }
@@ -178,6 +187,13 @@ impl Intersection {
 impl Line {
     fn points(&self) -> impl Iterator<Item = Point> {
         [self.a, self.b].into_iter()
+    }
+    fn other_point(&self, point: &Point) -> Point {
+        if self.a == *point {
+            self.b
+        } else {
+            self.a
+        }
     }
 
     fn shares_point_with(&self, other: &Self) -> bool {
@@ -253,6 +269,12 @@ impl Triangle {
                 b: self.a,
             },
         ];
+    }
+    fn other_line(&self, line: &Line, point: &Point) -> Line {
+        self.lines()
+            .into_iter()
+            .find(|l| l != line && l.has_point(*point))
+            .unwrap()
     }
     fn intersections(&self, other: &Triangle) -> Vec<Intersection> {
         let mut result = vec![];
@@ -406,6 +428,10 @@ impl Sub for Triangle {
         let oc = self.contains(&other.c);
         let ocount = (if oa { 1 } else { 0 }) + (if ob { 1 } else { 0 }) + (if oc { 1 } else { 0 });
         let mut polys: Vec<ConvexPolygon> = vec![];
+        eprintln!("intersections: {}", real.len());
+        eprintln!("projected: {}", projected.len());
+        eprintln!("scount: {}", scount);
+        eprintln!("ocount: {}\n", ocount);
         match (real.len(), projected.len(), scount, ocount) {
             (0, _, _, _) => {
                 return vec![self];
@@ -415,7 +441,9 @@ impl Sub for Triangle {
                 cursed_subtraction_debug(&self, &other, &i);
             }
             (_, _, 3, 0) => {
+                return vec![self];
                 // we have been fully subtracted
+                // cursed_subtraction_debug(&self, &other, &i);
             }
             (6, 0, 0, 0) => {
                 for l in self.lines() {
@@ -471,36 +499,38 @@ impl Sub for Triangle {
                         polys.push(ConvexPolygon(points));
                     }
                 }
-                for poly in &polys {
-                    eprintln!("Polygon of degree {}", poly.0.len());
-                    eprintln!("Polygon: {:?}", poly.0);
-                }
-                eprintln!("\n\n\n");
                 // cursed_subtraction_debug(&self, &other, &i);
             }
             (4, 0, 1, 0) => {
-                for p in self.points().filter(|p| !other.contains(p)) {
-                    eprintln!("uncontained point in 4,0,1,0: {:?}", p);
-                    let edges = self.lines().into_iter().filter(|l| l.has_point(p));
-                    let intersections: Vec<Intersection> = edges.map(|l| {
-                        real.iter().filter(|i| i.on_line(l))
-                            .fold(
-                                (None, f64::INFINITY.into()),
-                                |(mut best, mut best_dist): (Option<Intersection>, F64),
-                                 &intersection| {
-                                    let d = intersection.point.dist2(&p);
-                                    if d < best_dist {
-                                        best = Some(*intersection);
-                                        best_dist = d;
-                                    }
-                                    (best, best_dist)
-                                },
-                            )
-                            .0
-                            .unwrap()
-                    }).collect();
-                    polys.push(ConvexPolygon(vec![ p, intersections[0].point, intersections[1].point ]));
-                }
+                cursed_subtraction_debug(&self, &other, &i);
+                // for p in self.points().filter(|p| !other.contains(p)) {
+                //     let edges = self.lines().into_iter().filter(|l| l.has_point(p));
+                //     let intersections: Vec<Intersection> = edges
+                //         .map(|l| {
+                //             real.iter()
+                //                 .filter(|i| i.on_line(l))
+                //                 .fold(
+                //                     (None, f64::INFINITY.into()),
+                //                     |(mut best, mut best_dist): (Option<Intersection>, F64),
+                //                      &intersection| {
+                //                         let d = intersection.point.dist2(&p);
+                //                         if d < best_dist {
+                //                             best = Some(*intersection);
+                //                             best_dist = d;
+                //                         }
+                //                         (best, best_dist)
+                //                     },
+                //                 )
+                //                 .0
+                //                 .unwrap()
+                //         })
+                //         .collect();
+                //     polys.push(ConvexPolygon(vec![
+                //         p,
+                //         intersections[0].point,
+                //         intersections[1].point,
+                //     ]));
+                // }
             }
             (2, _, 1, 0) => {
                 polys.push(ConvexPolygon(
@@ -529,64 +559,80 @@ impl Sub for Triangle {
             }
             (2, 2, 0, 1) => {
                 let contained_point = other.points().find(|p| self.contains(p)).unwrap();
-                for starting_point in self.points() {
-                    let edges: Vec<_> = self
+                let cursed =
+                    projected[0].on_line(projected[1].a) || projected[0].on_line(projected[1].b);
+                if cursed {
+                    let choice = real[0];
+                    let dir = (real[0].point - real[1].point).normalize();
+                    let a = choice
                         .lines()
-                        .into_iter()
-                        .filter(|l| l.has_point(starting_point))
-                        .collect();
-                    let intersections: Vec<Intersection> = edges
-                        .iter()
-                        .map(|&l| {
-                            projected
-                                .iter()
-                                .chain(real.iter())
-                                .filter(|i| i.on_line(l))
-                                .fold(
-                                    (None, f64::INFINITY.into()),
-                                    |(mut best, mut best_dist): (Option<Intersection>, F64),
-                                     &intersection| {
-                                        let d = intersection.point.dist2(&starting_point);
-                                        if d < best_dist {
-                                            best = Some(*intersection);
-                                            best_dist = d;
-                                        }
-                                        (best, best_dist)
-                                    },
-                                )
-                                .0
-                                .unwrap()
-                        })
-                        .collect();
+                        .filter_map(|i| self.lines().into_iter().find(|l| *l == i))
+                        .next()
+                        .unwrap();
+                    let ap = a
+                        .points()
+                        .find(|p| dir.dot(&(real[0].point - *p).normalize()).signum() == -1.0)
+                        .unwrap();
+                    let b = self.other_line(&a, &ap);
+                    let bp = b.other_point(&ap);
+                    let c = self.other_line(&b, &bp);
+                    let cp = c.other_point(&bp);
                     polys.push(ConvexPolygon(vec![
-                        starting_point,
-                        intersections[0].point,
                         contained_point,
-                        intersections[1].point,
+                        choice.point,
+                        ap,
+                        bp,
+                        cp,
+                        real[1].point,
                     ]));
+                    // cursed_subtraction_debug(&self, &other, &i);
+                } else {
+                    for starting_point in self.points() {
+                        let edges: Vec<_> = self
+                            .lines()
+                            .into_iter()
+                            .filter(|l| l.has_point(starting_point))
+                            .collect();
+                        let intersections: Vec<Intersection> = edges
+                            .iter()
+                            .map(|&l| {
+                                projected
+                                    .iter()
+                                    .chain(real.iter())
+                                    .filter(|i| i.on_line(l))
+                                    .fold(
+                                        (None, f64::INFINITY.into()),
+                                        |(mut best, mut best_dist): (Option<Intersection>, F64),
+                                         &intersection| {
+                                            let d = intersection.point.dist2(&starting_point);
+                                            if d < best_dist {
+                                                best = Some(*intersection);
+                                                best_dist = d;
+                                            }
+                                            (best, best_dist)
+                                        },
+                                    )
+                                    .0
+                                    .unwrap()
+                            })
+                            .collect();
+                        polys.push(ConvexPolygon(vec![
+                            starting_point,
+                            intersections[0].point,
+                            contained_point,
+                            intersections[1].point,
+                        ]));
+                    }
                 }
-                // cursed_subtraction_debug(&self, &other, &i);
             }
             _ => {
-                eprintln!("intersections: {}", real.len());
-                eprintln!("projected: {}", projected.len());
-                eprintln!("scount: {}", scount);
-                eprintln!("ocount: {}\n", ocount);
-                cursed_subtraction_debug(&self, &other, &i);
+                // cursed_subtraction_debug(&self, &other, &i);
             }
         };
         polys
             .iter()
             .flat_map(|poly| poly.triangulate())
-            .filter(|tri| {
-                let area = tri.area();
-                if area > 0.003 {
-                    true
-                } else {
-                    eprintln!("throwing out a triangle of area {}: {:?}", area, tri);
-                    false
-                }
-            })
+            .filter(|tri| tri.area() > 0.0)
             .collect()
     }
 }
