@@ -101,7 +101,6 @@ fn cursed_subtraction_debug(
             }
             Ok(_) => {
                 // no panic? lame
-                eprintln!("false alarm, continuing");
                 DONT_RECURSE.store(false, Ordering::Relaxed);
                 return;
             }
@@ -464,15 +463,15 @@ impl Sub for Triangle {
         eprintln!("projected: {}", projected.len());
         eprintln!("scount: {}", scount);
         eprintln!("ocount: {}\n", ocount);
+        cursed_subtraction_debug(&self, &other, &i, true);
         match (real.len(), projected.len(), scount, ocount) {
             (_, _, 0, 3) => {
                 // we are getting a hole bored out of the middle oh no
                 cursed_subtraction_debug(&self, &other, &i, false);
             }
             (_, _, 3, 0) => {
-                return vec![];
                 // we have been fully subtracted
-                // cursed_subtraction_debug(&self, &other, &i);
+                return vec![];
             }
             (0, _, _, _) => {
                 // no intersections, all good!
@@ -483,7 +482,6 @@ impl Sub for Triangle {
                 cursed_subtraction_debug(&self, &other, &i, false);
             }
             (4, _, 0, 0) => {
-                cursed_subtraction_debug(&self, &other, &i, true);
                 let (lines_with_intersections, lines_without_intersections) = self
                     .lines()
                     .into_iter()
@@ -530,10 +528,8 @@ impl Sub for Triangle {
                         polys.push(ConvexPolygon(points));
                     }
                 }
-                // cursed_subtraction_debug(&self, &other, &i);
             }
             (4, 0, 1, 0) => {
-                cursed_subtraction_debug(&self, &other, &i, true);
                 for p in self.points().filter(|p| !other.contains(p)) {
                     let edges = self.lines().into_iter().filter(|l| l.has_point(p));
                     let intersections: Vec<Intersection> = edges
@@ -581,7 +577,6 @@ impl Sub for Triangle {
                 ));
             }
             (2, _, 2, 0) => {
-                cursed_subtraction_debug(&self, &other, &i, true);
                 let starting_point = self.points().find(|p| !other.contains(p)).unwrap();
                 polys.push(ConvexPolygon(vec![
                     starting_point,
@@ -618,7 +613,6 @@ impl Sub for Triangle {
                         cp,
                         real[1].point,
                     ]));
-                    // cursed_subtraction_debug(&self, &other, &i);
                 } else {
                     for starting_point in self.points() {
                         let edges: Vec<_> = self
