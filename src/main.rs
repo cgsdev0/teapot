@@ -20,6 +20,7 @@ fn draw_line_js(p1: Point, p2: Point) {
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 static DONT_RECURSE: AtomicBool = AtomicBool::new(false);
+static DONT_RECURSE2: AtomicBool = AtomicBool::new(false);
 static SKIP: AtomicI32 = AtomicI32::new(0);
 
 #[allow(dead_code)]
@@ -30,14 +31,21 @@ fn cursed_subtraction_debug(
     want_panic: bool,
 ) {
     let skip = SKIP.load(Ordering::Relaxed);
-    if skip < 0 {
+    if skip < 4 && !want_panic {
         SKIP.store(skip + 1, Ordering::Relaxed);
         return;
     }
-    if DONT_RECURSE.load(Ordering::Relaxed) {
-        return;
+    if want_panic {
+        if DONT_RECURSE.load(Ordering::Relaxed) {
+            return;
+        }
+        DONT_RECURSE.store(true, Ordering::Relaxed);
+    } else {
+        if DONT_RECURSE2.load(Ordering::Relaxed) {
+            return;
+        }
+        DONT_RECURSE2.store(true, Ordering::Relaxed);
     }
-    DONT_RECURSE.store(true, Ordering::Relaxed);
     let mut bb = BoundingBox::new();
     bb.expand(&t.a);
     bb.expand(&t.b);
@@ -157,7 +165,7 @@ fn draw_triangle_js(t: &Triangle, color: Color) {
     let (x, y) = canvas(t2(t.a));
     println!("ctx.lineTo({}, {});", x, y);
     println!("ctx.fill();");
-    println!("ctx.stroke();");
+    println!("ctx.stroke();await delay(500);");
 }
 
 #[allow(dead_code)]
@@ -586,74 +594,34 @@ impl Sub for Triangle {
             }
             (2, 2, 0, 1) => {
                 // TODO: this one is causing some overdraw
+                cursed_subtraction_debug(&self, &other, &i, false);
                 let contained_point = other.points().find(|p| self.contains(p)).unwrap();
-                let cursed =
-                    projected[0].on_line(projected[1].a) || projected[0].on_line(projected[1].b);
-                if cursed {
-                    let choice = real[0];
-                    let dir = (real[0].point - real[1].point).normalize();
-                    let a = choice
-                        .lines()
-                        .filter_map(|i| self.lines().into_iter().find(|l| *l == i))
-                        .next()
-                        .unwrap();
-                    let ap = a
-                        .points()
-                        .find(|p| dir.dot(&(real[0].point - *p).normalize()).signum() == -1.0)
-                        .unwrap();
-                    let b = self.other_line(&a, &ap);
-                    let bp = b.other_point(&ap);
-                    let c = self.other_line(&b, &bp);
-                    let cp = c.other_point(&bp);
-                    polys.push(ConvexPolygon(vec![
-                        contained_point,
-                        choice.point,
-                        ap,
-                        bp,
-                        cp,
-                        real[1].point,
-                    ]));
-                } else {
-                    for starting_point in self.points() {
-                        let edges: Vec<_> = self
-                            .lines()
-                            .into_iter()
-                            .filter(|l| l.has_point(starting_point))
-                            .collect();
-                        let intersections: Vec<Intersection> = edges
-                            .iter()
-                            .map(|&l| {
-                                projected
-                                    .iter()
-                                    .chain(real.iter())
-                                    .filter(|i| i.on_line(l))
-                                    .fold(
-                                        (None, f64::INFINITY.into()),
-                                        |(mut best, mut best_dist): (Option<Intersection>, F64),
-                                         &intersection| {
-                                            let d = intersection.point.dist2(&starting_point);
-                                            if d < best_dist {
-                                                best = Some(*intersection);
-                                                best_dist = d;
-                                            }
-                                            (best, best_dist)
-                                        },
-                                    )
-                                    .0
-                                    .unwrap()
-                            })
-                            .collect();
-                        polys.push(ConvexPolygon(vec![
-                            starting_point,
-                            intersections[0].point,
-                            contained_point,
-                            intersections[1].point,
-                        ]));
-                    }
-                }
+                let choice = real[0];
+                let dir = (real[0].point - real[1].point).normalize();
+                let a = choice
+                    .lines()
+                    .filter_map(|i| self.lines().into_iter().find(|l| *l == i))
+                    .next()
+                    .unwrap();
+                let ap = a
+                    .points()
+                    .find(|p| dir.dot(&(real[0].point - *p).normalize()).signum() == -1.0)
+                    .unwrap();
+                let b = self.other_line(&a, &ap);
+                let bp = b.other_point(&ap);
+                let c = self.other_line(&b, &bp);
+                let cp = c.other_point(&bp);
+                polys.push(ConvexPolygon(vec![
+                    contained_point,
+                    choice.point,
+                    ap,
+                    bp,
+                    cp,
+                    real[1].point,
+                ]));
             }
             _ => {
-                cursed_subtraction_debug(&self, &other, &i, false);
+                // cursed_subtraction_debug(&self, &other, &i, false);
             }
         };
         polys
