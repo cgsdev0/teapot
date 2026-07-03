@@ -128,7 +128,7 @@ fn draw_point_js(point: Point, color: &str, open: bool) {
     println!("ctx.fillStyle = '{}';", color);
     println!("ctx.strokeStyle = '{}';", color);
     let (x, y) = canvas(point);
-    println!("ctx.arc({}, {}, 3, 0, 2 * Math.PI);", x, y);
+    println!("ctx.arc({}, {}, 30, 0, 20 * Math.PI);", x, y);
     if open {
         println!("ctx.stroke();");
     } else {
@@ -750,8 +750,8 @@ fn paper(p: Point) -> (u16, u16) {
 #[allow(dead_code)]
 fn canvas(p: Point) -> (F64, F64) {
     (
-        ((p.x + 1.0) / 2.0 * 765.0 + 100.0),
-        ((-p.y + 1.0) / 2.0 * 765.0),
+        ((p.x + 1.0) / 2.0 * 7650.0 + 1000.0),
+        ((-p.y + 1.0) / 2.0 * 7650.0),
     )
 }
 
