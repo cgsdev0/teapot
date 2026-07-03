@@ -2,6 +2,7 @@
 // by tsoding :D
 
 use std::collections::{HashMap, HashSet};
+use std::array::IntoIter;
 use std::fs;
 use std::ops::{Add, Mul, Sub};
 
@@ -205,7 +206,7 @@ struct Intersection {
 }
 
 impl Intersection {
-    fn lines(&self) -> impl Iterator<Item = Line> {
+    fn lines(&self) -> IntoIter<Line, 2> {
         [self.a, self.b].into_iter()
     }
     fn on_line(&self, line: Line) -> bool {
@@ -221,7 +222,7 @@ impl Intersection {
 }
 
 impl Line {
-    fn points(&self) -> impl Iterator<Item = Point> {
+    fn points(&self) -> IntoIter<Point, 2> {
         [self.a, self.b].into_iter()
     }
     fn other_point(&self, point: &Point) -> Point {
@@ -287,11 +288,11 @@ struct Triangle {
 }
 
 impl Triangle {
-    fn points(&self) -> impl Iterator<Item = Point> {
-        return [self.a, self.b, self.c].into_iter();
+    fn points(&self) -> IntoIter<Point, 3> {
+        [self.a, self.b, self.c].into_iter()
     }
-    fn lines(&self) -> Vec<Line> {
-        return vec![
+    fn lines(&self) -> IntoIter<Line, 3> {
+        [
             Line {
                 a: self.a,
                 b: self.b,
@@ -304,20 +305,17 @@ impl Triangle {
                 a: self.c,
                 b: self.a,
             },
-        ];
+        ].into_iter()
     }
     fn other_line(&self, line: &Line, point: &Point) -> Line {
         self.lines()
-            .into_iter()
             .find(|l| l != line && l.has_point(*point))
             .unwrap()
     }
     fn intersections(&self, other: &Triangle) -> Vec<Intersection> {
         let mut result = vec![];
-        let sl = self.lines();
-        let ol = other.lines();
-        for l1 in sl.iter() {
-            for l2 in ol.iter() {
+        for l1 in self.lines() {
+            for l2 in other.lines() {
                 match l1.intersection(&l2) {
                     None => {}
                     Some(i) => {
@@ -357,9 +355,9 @@ impl Triangle {
 
 impl PartialEq for Triangle {
     fn eq(&self, other: &Self) -> bool {
-        let l1 = self.lines();
-        let l2 = other.lines();
-        l1.iter().all(|a| l2.iter().any(|b| a == b))
+        self.lines().all(|a| {
+            other.lines().any(|b| a == b)
+        })
     }
 }
 
@@ -492,7 +490,6 @@ impl Sub for Triangle {
             (4, _, 0, 0) => {
                 let (lines_with_intersections, lines_without_intersections) = self
                     .lines()
-                    .into_iter()
                     .partition::<Vec<_>, _>(|&l| real.iter().any(|&i| i.on_line(l)));
                 for l in lines_with_intersections {
                     let on_this_line = real.iter().filter(|i| i.on_line(l)).collect::<Vec<_>>();
@@ -539,7 +536,7 @@ impl Sub for Triangle {
             }
             (4, 0, 1, 0) => {
                 for p in self.points().filter(|p| !other.contains(p)) {
-                    let edges = self.lines().into_iter().filter(|l| l.has_point(p));
+                    let edges = self.lines().filter(|l| l.has_point(p));
                     let intersections: Vec<Intersection> = edges
                         .map(|l| {
                             real.iter()
@@ -571,7 +568,7 @@ impl Sub for Triangle {
                 polys.push(ConvexPolygon(
                     real.iter()
                         .map(|i| {
-                            (if self.lines().into_iter().any(|l| l == i.a) {
+                            (if self.lines().any(|l| l == i.a) {
                                 i.a
                             } else {
                                 i.b
@@ -600,7 +597,7 @@ impl Sub for Triangle {
                 let dir = (real[0].point - real[1].point).normalize();
                 let a = choice
                     .lines()
-                    .filter_map(|i| self.lines().into_iter().find(|l| *l == i))
+                    .filter_map(|i| self.lines().find(|l| *l == i))
                     .next()
                     .unwrap();
                 let ap = a
