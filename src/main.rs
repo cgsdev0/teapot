@@ -127,7 +127,7 @@ fn draw_point_js(point: Point, color: &str, open: bool) {
     println!("ctx.beginPath();");
     println!("ctx.fillStyle = '{}';", color);
     println!("ctx.strokeStyle = '{}';", color);
-    let (x, y) = canvas(t2(point));
+    let (x, y) = canvas(point);
     println!("ctx.arc({}, {}, 3, 0, 2 * Math.PI);", x, y);
     if open {
         println!("ctx.stroke();");
@@ -154,13 +154,13 @@ fn draw_triangle_js(t: &Triangle, color: Color) {
         }
     }
     println!("ctx.beginPath();");
-    let (x, y) = canvas(t2(t.a));
+    let (x, y) = canvas(t.a);
     println!("ctx.moveTo({}, {});", x, y);
-    let (x, y) = canvas(t2(t.b));
+    let (x, y) = canvas(t.b);
     println!("ctx.lineTo({}, {});", x, y);
-    let (x, y) = canvas(t2(t.c));
+    let (x, y) = canvas(t.c);
     println!("ctx.lineTo({}, {});", x, y);
-    let (x, y) = canvas(t2(t.a));
+    let (x, y) = canvas(t.a);
     println!("ctx.lineTo({}, {});", x, y);
     println!("ctx.fill();");
     println!("ctx.stroke();await delay(500);");
@@ -414,11 +414,11 @@ impl BoundingBox {
     fn reproject(&self, point: &Point) -> Point {
         let xrange = (point.x - self.min.x) / (self.max.x - self.min.x) * 2.0 - 1.0;
         let yrange = (point.y - self.min.y) / (self.max.y - self.min.y) * 2.0 - 1.0;
-        un_t2(Point {
+        Point {
             x: xrange * 0.9,
             y: yrange * 0.9,
             z: 0.0.into(),
-        })
+        }
     }
     fn reproject_triangle(&self, tri: &Triangle) -> Triangle {
         Triangle {
@@ -428,8 +428,8 @@ impl BoundingBox {
         }
     }
     fn draw(&self) {
-        let (x1, y1) = canvas(t2(self.min));
-        let (x2, y2) = canvas(t2(self.max));
+        let (x1, y1) = canvas(self.min);
+        let (x2, y2) = canvas(self.max);
         println!(
             "ctx.strokeStyle='cyan';ctx.strokeRect({}, {}, {}, {});",
             x1,
@@ -753,22 +753,6 @@ fn canvas(p: Point) -> (F64, F64) {
         ((p.x + 1.0) / 2.0 * 765.0 + 100.0),
         ((-p.y + 1.0) / 2.0 * 765.0),
     )
-}
-
-fn un_t2(p: Point) -> Point {
-    Point {
-        x: p.x,
-        y: p.y - 0.25,
-        z: p.z,
-    }
-}
-
-fn t2(p: Point) -> Point {
-    Point {
-        x: p.x,
-        y: p.y + 0.25,
-        z: p.z,
-    }
 }
 
 fn project(p: Point) -> Point {

@@ -8,4 +8,6 @@ ctx.fillStyle = "#ffffff30";
 
 ctx.lineWidth = 1;
 ctx.strokeStyle = "transparent";
+
+ctx.translate(0, -0.125 * canvas.height);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
