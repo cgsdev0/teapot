@@ -1,8 +1,8 @@
 // based on the video https://www.youtube.com/watch?v=qjWkNZ0SXfo
 // by tsoding :D
 
-use std::collections::{HashMap, HashSet};
 use std::array::IntoIter;
+use std::collections::HashMap;
 use std::fs;
 use std::ops::{Add, Mul, Sub};
 
@@ -54,14 +54,14 @@ fn cursed_subtraction_debug(
     // bb.expand(&cutter.a);
     // bb.expand(&cutter.b);
     // bb.expand(&cutter.c);
-    let t2 = bb.reproject_triangle(&t);
-    let c2 = bb.reproject_triangle(&cutter);
+    let t2 = bb.reproject_triangle(t);
+    let c2 = bb.reproject_triangle(cutter);
     let draw = |tris: Vec<Triangle>| {
         bb.draw();
         draw_triangle_js(&t2, Color::Lhs);
         draw_triangle_js(&c2, Color::Rhs);
         let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
-        for point in vec![t2.a, t2.b, t2.c, c2.a, c2.b, c2.c] {
+        for point in [t2.a, t2.b, t2.c, c2.a, c2.b, c2.c] {
             match points.get(&point) {
                 Some(count) => {
                     points.insert(point, count + 1);
@@ -140,9 +140,6 @@ fn draw_triangle_js(t: &Triangle, color: Color) {
     match color {
         Color::Lime => {
             println!("ctx.strokeStyle = 'transparent';");
-        }
-        Color::Red => {
-            println!("ctx.strokeStyle = 'red';");
         }
         Color::Lhs => {
             println!("ctx.strokeStyle = '#666';");
@@ -274,7 +271,6 @@ impl Line {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Color {
     Lime,
-    Red,
     Lhs,
     Rhs,
     Difference,
@@ -454,7 +450,6 @@ impl Sub for Triangle {
             .iter()
             .filter(|i| i.real && self.points().all(|p| i.point.dist2(&p) > 0.0.into()))
             .collect::<Vec<_>>();
-        let imaginary = i.iter().filter(|i| !i.real).collect::<Vec<_>>();
         let projected = i.iter().filter(|i| i.projected).collect::<Vec<_>>();
         let sa = other.contains(&self.a);
         let sb = other.contains(&self.b);
@@ -576,7 +571,7 @@ impl Sub for Triangle {
                                 i.b
                             })
                             .points()
-                            .find(|p| !other.contains(&p))
+                            .find(|p| !other.contains(p))
                             .unwrap()
                         })
                         .chain(real.iter().rev().map(|i| i.point))
