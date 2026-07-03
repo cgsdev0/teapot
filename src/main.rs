@@ -465,10 +465,12 @@ impl Sub for Triangle {
         let oc = self.contains(&other.c);
         let ocount = (if oa { 1 } else { 0 }) + (if ob { 1 } else { 0 }) + (if oc { 1 } else { 0 });
         let mut polys: Vec<ConvexPolygon> = vec![];
+        /*
         eprintln!("intersections: {}", real.len());
         eprintln!("projected: {}", projected.len());
         eprintln!("scount: {}", scount);
         eprintln!("ocount: {}\n", ocount);
+        */
         cursed_subtraction_debug(&self, &other, &i, true);
         match (real.len(), projected.len(), scount, ocount) {
             (_, _, 0, 3) => {
