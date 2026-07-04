@@ -13,9 +13,9 @@ type F64 = OrderedFloat<f64>;
 #[allow(dead_code)]
 fn draw_line_js(p1: Point, p2: Point) {
     let (x, y) = canvas(p1);
-    println!("ctx.moveTo({}, {});", x, y);
+    println!("ctx.moveTo(zx({}), zy({}));", x, y);
     let (x, y) = canvas(p2);
-    println!("ctx.lineTo({}, {});", x, y);
+    println!("ctx.lineTo(zx({}), zy({}));", x, y);
 }
 
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -128,7 +128,7 @@ fn draw_point_js(point: Point, color: &str, open: bool) {
     println!("ctx.fillStyle = '{}';", color);
     println!("ctx.strokeStyle = '{}';", color);
     let (x, y) = canvas(point);
-    println!("ctx.arc({}, {}, 30, 0, 20 * Math.PI);", x, y);
+    println!("ctx.arc(zx({}), zy({}), 5, 0, 20 * Math.PI);", x, y);
     if open {
         println!("ctx.stroke();");
     } else {
@@ -155,15 +155,15 @@ fn draw_triangle_js(t: &Triangle, color: Color) {
     }
     println!("ctx.beginPath();");
     let (x, y) = canvas(t.a);
-    println!("ctx.moveTo({}, {});", x, y);
+    println!("ctx.moveTo(zx({}), zy({}));", x, y);
     let (x, y) = canvas(t.b);
-    println!("ctx.lineTo({}, {});", x, y);
+    println!("ctx.lineTo(zx({}), zy({}));", x, y);
     let (x, y) = canvas(t.c);
-    println!("ctx.lineTo({}, {});", x, y);
+    println!("ctx.lineTo(zx({}), zy({}));", x, y);
     let (x, y) = canvas(t.a);
-    println!("ctx.lineTo({}, {});", x, y);
+    println!("ctx.lineTo(zx({}), zy({}));", x, y);
     println!("ctx.fill();");
-    println!("ctx.stroke();await delay(500);");
+    println!("ctx.stroke();");
 }
 
 #[allow(dead_code)]
@@ -301,7 +301,8 @@ impl Triangle {
                 a: self.c,
                 b: self.a,
             },
-        ].into_iter()
+        ]
+        .into_iter()
     }
     fn other_line(&self, line: &Line, point: &Point) -> Line {
         self.lines()
@@ -351,9 +352,7 @@ impl Triangle {
 
 impl PartialEq for Triangle {
     fn eq(&self, other: &Self) -> bool {
-        self.lines().all(|a| {
-            other.lines().any(|b| a == b)
-        })
+        self.lines().all(|a| other.lines().any(|b| a == b))
     }
 }
 
@@ -750,8 +749,8 @@ fn paper(p: Point) -> (u16, u16) {
 #[allow(dead_code)]
 fn canvas(p: Point) -> (F64, F64) {
     (
-        ((p.x + 1.0) / 2.0 * 7650.0 + 1000.0),
-        ((-p.y + 1.0) / 2.0 * 7650.0),
+        ((p.x + 1.0) / 2.0 * 765.0 + 132.5),
+        ((-p.y + 1.0) / 2.0 * 765.0),
     )
 }
 
