@@ -469,6 +469,12 @@ impl BoundingBox {
         }
     }
 
+    fn reproject_line(&self, edge: &Line) -> Line {
+        Line {
+            a: self.reproject(&edge.a),
+            b: self.reproject(&edge.b),
+        }
+    }
     fn reproject_triangle(&self, tri: &Triangle) -> Triangle {
         Triangle {
             a: self.reproject(&tri.a),
@@ -1108,10 +1114,21 @@ pub struct AppState {
     ctx: CanvasRenderingContext2d,
     bb: BoundingBox,
     zoom: BoundingBox,
+    edges: Vec<Line>,
 }
 
 #[wasm_bindgen]
 impl AppState {
+    pub fn new(ctx: CanvasRenderingContext2d) -> Self {
+        AppState {
+            ctx,
+            faces: vec![],
+            bb: BoundingBox::new(),
+            zoom: BoundingBox::new(),
+            edges: vec![],
+        }
+    }
+
     #[wasm_bindgen(getter)]
     pub fn ctx(&self) -> CanvasRenderingContext2d {
         self.ctx.clone()
@@ -1201,7 +1218,6 @@ impl AppState {
     #[wasm_bindgen]
     pub fn render(&self) {
         clear(&self);
-        let mut edges: HashMap<Line, usize> = std::collections::HashMap::new();
         for (i, face) in self.faces.iter().enumerate() {
             if face.culled {
                 continue;
@@ -1216,6 +1232,26 @@ impl AppState {
                 // }
                 let t = self.bb.reproject_triangle(&t);
                 self.draw_triangle(&t, Color::Lime);
+            }
+        }
+        for &edge in self.edges.iter() {
+            self.draw_line(edge.a, edge.b);
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn find_edges(&mut self) {
+        let mut edges: HashMap<Line, usize> = std::collections::HashMap::new();
+        for (i, face) in self.faces.iter().enumerate() {
+            if face.culled {
+                continue;
+            }
+            // if i > 274 {
+            //     break;
+            // }
+
+            for t in &face.hair {
+                let t = self.bb.reproject_triangle(&t);
                 for edge in t.lines() {
                     match edges.get(&edge) {
                         Some(count) => {
@@ -1228,9 +1264,11 @@ impl AppState {
                 }
             }
         }
-        for (&edge, _) in edges.iter().filter(|&(_, &count)| count == 1) {
-            self.draw_line(edge.a, edge.b);
-        }
+        self.edges = edges
+            .iter()
+            .filter(|&(_, &count)| count == 1)
+            .map(|(&line, _)| line)
+            .collect();
     }
 }
 
@@ -1253,12 +1291,7 @@ pub fn init_app() -> Result<AppState, JsValue> {
     let ctx = canvas.get_context("2d")?.expect("can't get context");
     let ctx = ctx.dyn_into::<CanvasRenderingContext2d>()?;
 
-    let mut app_state = AppState {
-        faces: vec![],
-        ctx: ctx,
-        bb: BoundingBox::new(),
-        zoom: BoundingBox::new(),
-    };
+    let mut app_state = AppState::new(ctx);
     app_state.zoom.mode = BBMode::FromTopLeft;
     app_state.zoom.expand(&Point {
         x: 0.0.into(),
@@ -1400,5 +1433,6 @@ pub fn init_app() -> Result<AppState, JsValue> {
     }
 
     app_state.bb.make_square();
+    app_state.find_edges();
     Ok(app_state)
 }
