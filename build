@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-wasm-pack build --target web
+wasm-pack build --target web --release
 # { cat top.js
 #   cargo run
 #   cat bop.js

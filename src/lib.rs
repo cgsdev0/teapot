@@ -6,6 +6,7 @@ use web_sys::{console, CanvasRenderingContext2d, HtmlCanvasElement};
 
 use std::array::IntoIter;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
 use ordered_float::OrderedFloat;
@@ -183,6 +184,18 @@ impl Intersection {
             self.b
         } else {
             self.a
+        }
+    }
+}
+
+impl Hash for Line {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        if self.a <= self.b {
+            self.a.hash(state);
+            self.b.hash(state);
+        } else {
+            self.b.hash(state);
+            self.a.hash(state);
         }
     }
 }
@@ -988,6 +1001,18 @@ impl Point {
     }
 }
 
+impl PartialOrd for Point {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Point {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.x.cmp(&other.x).then(self.y.cmp(&other.y))
+    }
+}
+
 impl Add for Point {
     type Output = Point;
     fn add(self, other: Point) -> Point {
@@ -1106,16 +1131,18 @@ impl AppState {
     }
 
     fn draw_line(&self, p1: Point, p2: Point) {
+        self.ctx.set_stroke_style_str("red");
         let (x, y) = self.to_canvas(p1);
-        println!("ctx.moveTo(zx({}), zy({}));", x, y);
+        self.ctx.move_to(x.into(), y.into());
         let (x, y) = self.to_canvas(p2);
-        println!("ctx.lineTo(zx({}), zy({}));", x, y);
+        self.ctx.line_to(x.into(), y.into());
+        self.ctx.stroke();
     }
 
     fn draw_triangle(&self, t: &Triangle, color: Color) {
         match color {
             Color::Lime => {
-                self.ctx.set_stroke_style_str("lime");
+                self.ctx.set_stroke_style_str("transparent");
             }
             Color::Lhs => {
                 self.ctx.set_stroke_style_str("#666");
@@ -1174,6 +1201,7 @@ impl AppState {
     #[wasm_bindgen]
     pub fn render(&self) {
         clear(&self);
+        let mut edges: HashMap<Line, usize> = std::collections::HashMap::new();
         for (i, face) in self.faces.iter().enumerate() {
             if face.culled {
                 continue;
@@ -1188,7 +1216,20 @@ impl AppState {
                 // }
                 let t = self.bb.reproject_triangle(&t);
                 self.draw_triangle(&t, Color::Lime);
+                for edge in t.lines() {
+                    match edges.get(&edge) {
+                        Some(count) => {
+                            edges.insert(edge, count + 1);
+                        }
+                        None => {
+                            edges.insert(edge, 1);
+                        }
+                    }
+                }
             }
+        }
+        for (&edge, _) in edges.iter().filter(|&(_, &count)| count == 1) {
+            self.draw_line(edge.a, edge.b);
         }
     }
 }
