@@ -59,7 +59,7 @@ async function pointerup(e) {
     x1: ux(Math.min(x1, x2)),
     y1: uy(Math.min(y1, y2)),
     x2: ux(Math.max(x1, x2)),
-    y2: uy(Math.min(y1, y2)),
+    y2: uy(Math.max(y1, y2)),
   };
 
   clear();
