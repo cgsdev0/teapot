@@ -36,7 +36,7 @@ fn cursed_subtraction_debug(
         return;
     }
     let skip = SKIP.load(Ordering::Relaxed);
-    if skip < 0 && !want_panic {
+    if skip < 4 && !want_panic {
         SKIP.store(skip + 1, Ordering::Relaxed);
         return;
     }
@@ -152,7 +152,7 @@ fn draw_point_js(point: Point, color: &str, open: bool) {
 fn draw_triangle_js(t: &Triangle, color: Color) {
     match color {
         Color::Lime => {
-            println!("ctx.strokeStyle = 'lime';");
+            println!("ctx.strokeStyle = 'transparent';");
         }
         Color::Lhs => {
             println!("ctx.strokeStyle = '#666';");
@@ -604,7 +604,7 @@ impl Sub for Triangle {
                 // we are getting a hole bored out of the middle oh no
                 cursed_subtraction_debug(&self, &other, &i, false);
             }
-            (_, _, 3, 0, _) => {
+            (0, 0, 2, 0, 1) | (_, _, 3, 0, _) => {
                 // we have been fully subtracted
                 return vec![];
             }
@@ -659,6 +659,49 @@ impl Sub for Triangle {
                 poly_a.0.push(z);
                 polys.push(poly_a);
                 polys.push(poly_b);
+            }
+            (2, 4, 0, 2, 0) => {
+                let double_projected_line = self
+                    .lines()
+                    .find(|&l| projected.iter().filter(|i| i.on_line(l)).count() > 1)
+                    .unwrap();
+                let double_intersected_line = self
+                    .lines()
+                    .find(|&l| real.iter().filter(|i| i.on_line(l)).count() > 1)
+                    .unwrap();
+                let new_triangle_vertex = self
+                    .points()
+                    .find(|&p| {
+                        double_projected_line.has_point(p) && double_intersected_line.has_point(p)
+                    })
+                    .unwrap();
+                let tri_real =
+                    new_triangle_vertex.closest_intersection(&real, double_intersected_line);
+                let (tri_cutting_point, concave_cutting_point): (Vec<Point>, Vec<Point>) =
+                    other_included
+                        .iter()
+                        .partition(|&&p| tri_real.b.has_point(p));
+                let tri_cutting_point = tri_cutting_point[0];
+                let concave_cutting_point = concave_cutting_point[0];
+
+                let tri_proj =
+                    new_triangle_vertex.closest_intersection(&projected, double_projected_line);
+                polys.push(ConvexPolygon(vec![
+                    new_triangle_vertex,
+                    tri_real.point,
+                    tri_proj.point,
+                ]));
+                polys.push(ConvexPolygon(vec![
+                    concave_cutting_point,
+                    tri_cutting_point,
+                    tri_proj.point,
+                    double_projected_line.other_point(&new_triangle_vertex),
+                    double_intersected_line.other_point(&new_triangle_vertex),
+                    real.iter()
+                        .find(|i| i.point != tri_real.point)
+                        .unwrap()
+                        .point,
+                ]));
             }
             (4, _, 0, 0, _) => {
                 let (lines_with_intersections, lines_without_intersections) = self
@@ -760,10 +803,51 @@ impl Sub for Triangle {
             }
             (2, _, 0, 0, 1) => {
                 cursed_subtraction_debug(&self, &other, &i, false);
-                // TODO: form two triangles, both have the shared point (woah)
-                // find closest intersection to the other points ez
-                polys.push(ConvexPolygon(vec![self.a, self.b, self.c]));
+                let start = shared.iter().next().unwrap();
+                for p in self.points().filter(|p| p != start) {
+                    let closest_intersection = real
+                        .iter()
+                        .fold(
+                            (None, f64::INFINITY.into()),
+                            |(mut best, mut best_dist): (Option<Intersection>, F64),
+                             &intersection| {
+                                let d = intersection.point.dist2(&p);
+                                if d < best_dist {
+                                    best = Some(*intersection);
+                                    best_dist = d;
+                                }
+                                (best, best_dist)
+                            },
+                        )
+                        .0
+                        .unwrap();
+                    polys.push(ConvexPolygon(vec![*start, p, closest_intersection.point]));
+                }
+                /*
+                let others: Vec<_> = self.points().filter(|p| p != start).collect();
+                let a = others[0];
+                let b = others[1];
+                polys.push(ConvexPolygon(vec![*start, a]));
+                polys.push(ConvexPolygon(vec![*start, b]));
+                */
             }
+            // (2, _, 0, 2, 0) => {
+            //     polys.push(ConvexPolygon(
+            //         real.iter()
+            //             .map(|i| {
+            //                 (if self.lines().any(|l| l == i.a) {
+            //                     i.a
+            //                 } else {
+            //                     i.b
+            //                 })
+            //                 .points()
+            //                 .find(|p| !self_included.contains(p) && !shared.contains(p))
+            //                 .unwrap()
+            //             })
+            //             .chain(real.iter().rev().map(|i| i.point))
+            //             .collect(),
+            //     ));
+            // }
             (2, _, 1, 0, _) => {
                 polys.push(ConvexPolygon(
                     real.iter()
@@ -789,8 +873,10 @@ impl Sub for Triangle {
                     real[1].point,
                 ]));
             }
+            (1, _, 0, 1, 1) => {
+                return vec![self];
+            }
             (2, 2, 0, 1, 0) => {
-                // TODO: this one is causing some overdraw
                 let contained_point = other.points().find(|p| other_included.contains(p)).unwrap();
                 let choice = real[0];
                 let dir = (real[0].point - real[1].point).normalize();
@@ -831,7 +917,7 @@ impl Sub for Triangle {
                 // cursed_subtraction_debug(&self, &other, &i, false);
             }
         };
-        // cursed_subtraction_debug(&self, &other, &i, false);
+        cursed_subtraction_debug(&self, &other, &i, false);
         polys
             .iter()
             .flat_map(|poly| poly.triangulate())
@@ -919,6 +1005,25 @@ impl Point {
         let y = other.y - self.y;
         let z = other.z - self.z;
         x * x + y * y + z * z
+    }
+
+    fn closest_intersection(&self, intersections: &Vec<&Intersection>, line: Line) -> Intersection {
+        intersections
+            .iter()
+            .filter(|i| i.on_line(line))
+            .fold(
+                (None, f64::INFINITY.into()),
+                |(mut best, mut best_dist): (Option<Intersection>, F64), &intersection| {
+                    let d = intersection.point.dist2(self);
+                    if d < best_dist {
+                        best = Some(*intersection);
+                        best_dist = d;
+                    }
+                    (best, best_dist)
+                },
+            )
+            .0
+            .unwrap()
     }
 }
 
@@ -1112,7 +1217,7 @@ fn main() {
             continue;
         }
         let mut cut = false;
-        if i == 580 {
+        if i == 274 {
             EVIL_MODE.store(true, Ordering::Relaxed);
         } else {
             EVIL_MODE.store(false, Ordering::Relaxed);
@@ -1122,7 +1227,7 @@ fn main() {
                 let mut haircut: Vec<Triangle> = vec![];
                 for t in face.hair.iter() {
                     let mut split = *t - *t2;
-                    if split.len() > 1 && !cut {
+                    if (split.len() == 0 || split.len() > 1) && !cut {
                         let mut debug = FaceDebug {
                             face_id: i,
                             bb: BoundingBox::new(),
@@ -1169,7 +1274,7 @@ fn main() {
         if face.culled {
             continue;
         }
-        // if i > 152 {
+        // if i > 274 {
         //     break;
         // }
 
