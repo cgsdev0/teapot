@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
 { cat top.js
-  echo "const plot = async () => {"
   cargo run
-  echo "}"
   cat bop.js
 } > main.js

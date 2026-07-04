@@ -2,7 +2,7 @@
 // by tsoding :D
 
 use std::array::IntoIter;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::ops::{Add, Mul, Sub};
 
@@ -20,6 +20,7 @@ fn draw_line_js(p1: Point, p2: Point) {
 
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
+static EVIL_MODE: AtomicBool = AtomicBool::new(false);
 static DONT_RECURSE: AtomicBool = AtomicBool::new(false);
 static DONT_RECURSE2: AtomicBool = AtomicBool::new(false);
 static SKIP: AtomicI32 = AtomicI32::new(0);
@@ -31,8 +32,11 @@ fn cursed_subtraction_debug(
     i: &Vec<Intersection>,
     want_panic: bool,
 ) {
+    if !EVIL_MODE.load(Ordering::Relaxed) {
+        return;
+    }
     let skip = SKIP.load(Ordering::Relaxed);
-    if skip < 4 && !want_panic {
+    if skip < 0 && !want_panic {
         SKIP.store(skip + 1, Ordering::Relaxed);
         return;
     }
@@ -47,6 +51,7 @@ fn cursed_subtraction_debug(
         }
         DONT_RECURSE2.store(true, Ordering::Relaxed);
     }
+    eprintln!("cursed entry");
     let mut bb = BoundingBox::new();
     bb.expand(&t.a);
     bb.expand(&t.b);
@@ -57,6 +62,10 @@ fn cursed_subtraction_debug(
     let t2 = bb.reproject_triangle(t);
     let c2 = bb.reproject_triangle(cutter);
     let draw = |tris: Vec<Triangle>| {
+        eprintln!("{:?}", t);
+        println!("const bounding_boxes = null;");
+        println!("const plot = async () => {{");
+
         bb.draw();
         draw_triangle_js(&t2, Color::Lhs);
         draw_triangle_js(&c2, Color::Rhs);
@@ -81,7 +90,10 @@ fn cursed_subtraction_debug(
                 false,
             );
         }
-        for aye in i {
+        for aye in i
+            .iter()
+            .filter(|i| i.real && t.points().all(|p| i.point.dist2(&p) > f64::EPSILON.into()))
+        {
             let eye = bb.reproject(&aye.point);
             if !aye.projected && !aye.real {
                 continue;
@@ -95,6 +107,7 @@ fn cursed_subtraction_debug(
         for t in tris {
             draw_triangle_js(&bb.reproject_triangle(&t), Color::Difference);
         }
+        println!("}}");
     };
     if want_panic {
         let res = std::panic::catch_unwind(|| {
@@ -116,7 +129,7 @@ fn cursed_subtraction_debug(
         }
     } else {
         let split = *t - *cutter;
-        eprintln!("{} splits", split.len());
+        // eprintln!("{} splits", split.len());
         draw(split);
     }
     // eprintln!("{:?}\n\n{:?}\n\n{:?}", bb, t, cutter);
@@ -139,7 +152,7 @@ fn draw_point_js(point: Point, color: &str, open: bool) {
 fn draw_triangle_js(t: &Triangle, color: Color) {
     match color {
         Color::Lime => {
-            println!("ctx.strokeStyle = 'transparent';");
+            println!("ctx.strokeStyle = 'lime';");
         }
         Color::Lhs => {
             println!("ctx.strokeStyle = '#666';");
@@ -203,6 +216,9 @@ struct Intersection {
 }
 
 impl Intersection {
+    fn shares_line_with(&self, other: &Intersection) -> bool {
+        self.a == other.a || self.b == other.b || self.a == other.b || self.b == other.a
+    }
     fn lines(&self) -> IntoIter<Line, 2> {
         [self.a, self.b].into_iter()
     }
@@ -238,8 +254,17 @@ impl Line {
         self.a == p || self.b == p
     }
 
+    fn parallel_with(&self, other: &Line) -> bool {
+        let slope_a = self.b - self.a;
+        let slope_a = slope_a.y / slope_a.x;
+        let slope_b = other.b - other.a;
+        let slope_b = slope_b.y / slope_b.x;
+        let diff = slope_a - slope_b;
+        diff.abs() < f64::EPSILON * 5000.0
+    }
+
     fn intersection(&self, other: &Line) -> Option<Intersection> {
-        if self == other {
+        if self == other || self.parallel_with(other) {
             None
         } else {
             let a = *self;
@@ -284,6 +309,12 @@ struct Triangle {
 }
 
 impl Triangle {
+    fn to_js_string(&self) -> String {
+        let (ax, ay) = canvas(self.a);
+        let (bx, by) = canvas(self.b);
+        let (cx, cy) = canvas(self.c);
+        format!("[[{},{}],[{},{}],[{},{}]]", ax, ay, bx, by, cx, cy)
+    }
     fn points(&self) -> IntoIter<Point, 3> {
         [self.a, self.b, self.c].into_iter()
     }
@@ -303,6 +334,9 @@ impl Triangle {
             },
         ]
         .into_iter()
+    }
+    fn my_lines(&self, point: &Point) -> Vec<Line> {
+        self.lines().filter(|l| l.has_point(*point)).collect()
     }
     fn other_line(&self, line: &Line, point: &Point) -> Line {
         self.lines()
@@ -368,12 +402,12 @@ impl ConvexPolygon {
                 c: self.0[i + 2],
             });
         }
-        eprintln!(
-            "Turned {} points into {} triangles",
-            self.0.len(),
-            result.len()
-        );
-        eprintln!("{:?}\n", result);
+        // eprintln!(
+        //     "Turned {} points into {} triangles",
+        //     self.0.len(),
+        //     result.len()
+        // );
+        // eprintln!("{:?}\n", result);
         result
     }
 }
@@ -384,6 +418,27 @@ struct BoundingBox {
     max: Point,
 }
 
+struct FaceDebug {
+    bb: BoundingBox,
+    face_id: usize,
+    triangle: Triangle,
+}
+
+impl FaceDebug {
+    fn to_js_string(&self) -> String {
+        let (ax, ay) = canvas(self.bb.min);
+        let (bx, by) = canvas(self.bb.max);
+        format!(
+            "{{t: {}, x1: {}, y1: {}, x2: {}, y2: {}, face: {}}},",
+            self.triangle.to_js_string(),
+            ax,
+            by,
+            bx,
+            ay,
+            self.face_id
+        )
+    }
+}
 impl BoundingBox {
     fn new() -> Self {
         Self {
@@ -397,6 +452,19 @@ impl BoundingBox {
                 y: f64::NEG_INFINITY.into(),
                 z: 0.0.into(),
             },
+        }
+    }
+    fn make_square(&mut self) {
+        let dx = self.max.x - self.min.x;
+        let dy = self.max.y - self.min.y;
+        if dy > dx {
+            let delta = dy - dx;
+            self.min.x -= delta * 0.5;
+            self.max.x += delta * 0.5;
+        } else if dx > dy {
+            let delta = dx - dy;
+            self.min.y -= delta * 0.5;
+            self.max.y += delta * 0.5;
         }
     }
 
@@ -419,6 +487,14 @@ impl BoundingBox {
             z: 0.0.into(),
         }
     }
+
+    fn reproject_bb(&self, bb: &BoundingBox) -> BoundingBox {
+        BoundingBox {
+            min: self.reproject(&bb.min),
+            max: self.reproject(&bb.max),
+        }
+    }
+
     fn reproject_triangle(&self, tri: &Triangle) -> Triangle {
         Triangle {
             a: self.reproject(&tri.a),
@@ -447,43 +523,144 @@ impl Sub for Triangle {
         let i = self.intersections(&other);
         let real = i
             .iter()
-            .filter(|i| i.real && self.points().all(|p| i.point.dist2(&p) > 0.0.into()))
+            .filter(|i| {
+                i.real
+                    && self
+                        .points()
+                        .all(|p| i.point.dist2(&p) > f64::EPSILON.into())
+            })
             .collect::<Vec<_>>();
+        let extras = self.points().filter(|p| {
+            i.iter()
+                .any(|i| i.real && i.point.dist2(&p) <= f64::EPSILON.into())
+        });
+        // let real = i.iter().filter(|i| i.real).collect::<Vec<_>>();
         let projected = i.iter().filter(|i| i.projected).collect::<Vec<_>>();
-        let sa = other.contains(&self.a);
-        let sb = other.contains(&self.b);
-        let sc = other.contains(&self.c);
-        let scount = (if sa { 1 } else { 0 }) + (if sb { 1 } else { 0 }) + (if sc { 1 } else { 0 });
-        let oa = self.contains(&other.a);
-        let ob = self.contains(&other.b);
-        let oc = self.contains(&other.c);
-        let ocount = (if oa { 1 } else { 0 }) + (if ob { 1 } else { 0 }) + (if oc { 1 } else { 0 });
+        let mut self_included: HashSet<Point> = std::collections::HashSet::new();
+        for point in self.points().filter(|a| other.contains(a)).chain(extras) {
+            self_included.insert(point);
+        }
+        let scount = self_included.iter().count();
+        let mut other_included: HashSet<Point> = std::collections::HashSet::new();
+        for point in other.points().filter(|a| self.contains(a)) {
+            other_included.insert(point);
+        }
+        let ocount = other_included.iter().count();
+        // let ocount = other.points().filter(|a| self.contains(a)).count();
         let mut polys: Vec<ConvexPolygon> = vec![];
-        /*
+        let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
+        let mut shared: HashSet<Point> = std::collections::HashSet::new();
+        for point in [self.a, self.b, self.c, other.a, other.b, other.c] {
+            match points.get(&point) {
+                Some(count) => {
+                    points.insert(point, count + 1);
+                    shared.insert(point);
+                }
+                None => {
+                    points.insert(point, 1);
+                }
+            }
+        }
+        // seek the truth
+        let shared_count = shared.iter().count();
+        if shared_count + scount < 3 && scount > 0 {
+            for line in self.lines() {
+                let intersections = real.iter().filter(|i| i.on_line(line)).count();
+                if self_included.contains(&line.b) {
+                    if !self_included.contains(&line.a)
+                        && !shared.contains(&line.a)
+                        && intersections == 0
+                    {
+                        self_included.remove(&line.b);
+                        shared.insert(line.b);
+                    }
+                }
+                if self_included.contains(&line.a) {
+                    if !self_included.contains(&line.b)
+                        && !shared.contains(&line.b)
+                        && intersections == 0
+                    {
+                        self_included.remove(&line.a);
+                        shared.insert(line.a);
+                    }
+                }
+            }
+        }
+        let scount = self_included.iter().count();
+        let shared_count = shared.iter().count();
+
         eprintln!("intersections: {}", real.len());
         eprintln!("projected: {}", projected.len());
         eprintln!("scount: {}", scount);
-        eprintln!("ocount: {}\n", ocount);
-        */
-        cursed_subtraction_debug(&self, &other, &i, true);
-        match (real.len(), projected.len(), scount, ocount) {
-            (_, _, 0, 3) => {
+        eprintln!("ocount: {}", ocount);
+        eprintln!("shared: {}\n", shared_count);
+        // JAGI
+        match (real.len(), projected.len(), scount, ocount, shared_count) {
+            (_, _, _, _, 3) => {
+                // it's the same picture
+                return vec![];
+            }
+            (_, _, 0, 3, _) => {
                 // we are getting a hole bored out of the middle oh no
                 cursed_subtraction_debug(&self, &other, &i, false);
             }
-            (_, _, 3, 0) => {
+            (_, _, 3, 0, _) => {
                 // we have been fully subtracted
                 return vec![];
             }
-            (0, _, _, _) => {
+            (0, _, 0, _, _) => {
                 // no intersections, all good!
                 return vec![self];
             }
-            (6, 0, 0, 0) => {
+            // (0, _, 0, _, _)
+            (6, 0, 0, 0, _) => {
                 // star of david situation
                 cursed_subtraction_debug(&self, &other, &i, false);
             }
-            (4, _, 0, 0) => {
+            (3, _, 0, 0, 1) => {
+                let line = self
+                    .lines()
+                    .find(|line| !real.iter().any(|i| i.on_line(*line)))
+                    .unwrap();
+                let mut poly_a = ConvexPolygon(vec![line.a, line.b]);
+                let other_point = self.points().find(|&p| p != line.a && p != line.b).unwrap();
+                let intersections: Vec<_> = self
+                    .my_lines(&other_point)
+                    .into_iter()
+                    .map(|l| {
+                        real.iter()
+                            .filter(|i| i.on_line(l))
+                            .fold(
+                                (None, f64::INFINITY.into()),
+                                |(mut best, mut best_dist): (Option<Intersection>, F64),
+                                 &intersection| {
+                                    let d = intersection.point.dist2(&other_point);
+                                    if d < best_dist {
+                                        best = Some(*intersection);
+                                        best_dist = d;
+                                    }
+                                    (best, best_dist)
+                                },
+                            )
+                            .0
+                            .unwrap()
+                    })
+                    .map(|i| i.point)
+                    .collect();
+                let x = intersections[0];
+                let y = intersections[1];
+                let poly_b = ConvexPolygon(vec![other_point, x, y]);
+                let z = real
+                    .iter()
+                    .find(|i| i.point != x && i.point != y)
+                    .unwrap()
+                    .point;
+
+                poly_a.0.push(z);
+                polys.push(poly_a);
+                polys.push(poly_b);
+            }
+            (4, _, 0, 0, _) => {
                 let (lines_with_intersections, lines_without_intersections) = self
                     .lines()
                     .partition::<Vec<_>, _>(|&l| real.iter().any(|&i| i.on_line(l)));
@@ -530,8 +707,9 @@ impl Sub for Triangle {
                     }
                 }
             }
-            (4, 0, 1, 0) => {
-                for p in self.points().filter(|p| !other.contains(p)) {
+            (4, 0, 1, 0, _) => {
+                // cursed_subtraction_debug(&self, &other, &i, true);
+                for p in self.points().filter(|p| !self_included.contains(p)) {
                     let edges = self.lines().filter(|l| l.has_point(p));
                     let intersections: Vec<Intersection> = edges
                         .map(|l| {
@@ -560,7 +738,10 @@ impl Sub for Triangle {
                     ]));
                 }
             }
-            (2, _, 1, 0) => {
+            // (2, _, 0, 0, 1) | (2, _, 1, 0, _) if real[0].shares_line_with(real[1]) => {
+            //     panic!("haha");
+            // }
+            (2, _, 0, 0, 1) if !real[0].shares_line_with(real[1]) => {
                 polys.push(ConvexPolygon(
                     real.iter()
                         .map(|i| {
@@ -570,25 +751,47 @@ impl Sub for Triangle {
                                 i.b
                             })
                             .points()
-                            .find(|p| !other.contains(p))
+                            .find(|p| !self_included.contains(p) && !shared.contains(p))
                             .unwrap()
                         })
                         .chain(real.iter().rev().map(|i| i.point))
                         .collect(),
                 ));
             }
-            (2, _, 2, 0) => {
-                let starting_point = self.points().find(|p| !other.contains(p)).unwrap();
+            (2, _, 0, 0, 1) => {
+                cursed_subtraction_debug(&self, &other, &i, false);
+                // TODO: form two triangles, both have the shared point (woah)
+                // find closest intersection to the other points ez
+                polys.push(ConvexPolygon(vec![self.a, self.b, self.c]));
+            }
+            (2, _, 1, 0, _) => {
+                polys.push(ConvexPolygon(
+                    real.iter()
+                        .map(|i| {
+                            (if self.lines().any(|l| l == i.a) {
+                                i.a
+                            } else {
+                                i.b
+                            })
+                            .points()
+                            .find(|p| !self_included.contains(p) && !shared.contains(p))
+                            .unwrap()
+                        })
+                        .chain(real.iter().rev().map(|i| i.point))
+                        .collect(),
+                ));
+            }
+            (2, _, 2, 0, _) => {
+                let starting_point = self.points().find(|p| !self_included.contains(p)).unwrap();
                 polys.push(ConvexPolygon(vec![
                     starting_point,
                     real[0].point,
                     real[1].point,
                 ]));
             }
-            (2, 2, 0, 1) => {
+            (2, 2, 0, 1, 0) => {
                 // TODO: this one is causing some overdraw
-                cursed_subtraction_debug(&self, &other, &i, false);
-                let contained_point = other.points().find(|p| self.contains(p)).unwrap();
+                let contained_point = other.points().find(|p| other_included.contains(p)).unwrap();
                 let choice = real[0];
                 let dir = (real[0].point - real[1].point).normalize();
                 let a = choice
@@ -613,10 +816,22 @@ impl Sub for Triangle {
                     real[1].point,
                 ]));
             }
+            (1, _, 1, 0, 1) => {
+                polys.push(ConvexPolygon(vec![
+                    real[0].point,
+                    self.points()
+                        .filter(|p| !self_included.contains(p) && !shared.contains(p))
+                        .next()
+                        .unwrap(),
+                    *shared.iter().next().unwrap(),
+                ]));
+            }
             _ => {
+                eprintln!("it matched nobody");
                 // cursed_subtraction_debug(&self, &other, &i, false);
             }
         };
+        // cursed_subtraction_debug(&self, &other, &i, false);
         polys
             .iter()
             .flat_map(|poly| poly.triangulate())
@@ -781,6 +996,7 @@ fn rotate(p: Point, angle: F64) -> Point {
 }
 
 fn main() {
+    let mut bb = BoundingBox::new();
     let contents: String = fs::read_to_string("teapot.obj").unwrap();
     let mut faces: Vec<Face> = vec![];
     let mut v: Vec<Point> = vec![];
@@ -804,7 +1020,7 @@ fn main() {
                         }
                     })
                     .collect::<Vec<_>>();
-                faces.push(Face {
+                let face = Face {
                     eyes: parts[0],
                     noes: parts[1],
                     ears: parts[2],
@@ -814,7 +1030,11 @@ fn main() {
                         c: project(parts[2].vertex),
                     }],
                     culled: false,
-                });
+                };
+                bb.expand(&face.hair[0].a);
+                bb.expand(&face.hair[0].b);
+                bb.expand(&face.hair[0].c);
+                faces.push(face);
             }
             "v" => {
                 v.push(Point {
@@ -884,38 +1104,83 @@ fn main() {
     }
     drop(drawn);
 
+    let mut dbs: Vec<FaceDebug> = vec![];
     let mut drawn: Vec<&mut Face> = vec![];
     // it's time to split hairs
-    for face in faces.iter_mut() {
+    for (i, face) in faces.iter_mut().enumerate() {
         if face.culled {
             continue;
+        }
+        let mut cut = false;
+        if i == 580 {
+            EVIL_MODE.store(true, Ordering::Relaxed);
+        } else {
+            EVIL_MODE.store(false, Ordering::Relaxed);
         }
         for f2 in drawn.iter() {
             for t2 in f2.hair.iter() {
                 let mut haircut: Vec<Triangle> = vec![];
                 for t in face.hair.iter() {
                     let mut split = *t - *t2;
+                    if split.len() > 1 && !cut {
+                        let mut debug = FaceDebug {
+                            face_id: i,
+                            bb: BoundingBox::new(),
+                            triangle: Triangle {
+                                a: project(face.eyes.vertex),
+                                b: project(face.noes.vertex),
+                                c: project(face.ears.vertex),
+                            },
+                        };
+                        debug.bb.expand(&debug.triangle.a);
+                        debug.bb.expand(&debug.triangle.b);
+                        debug.bb.expand(&debug.triangle.c);
+                        dbs.push(debug);
+                        cut = true;
+                    }
                     haircut.append(&mut split);
                 }
                 face.hair = haircut;
             }
         }
+        if cut {
+            count += 1;
+        }
         drawn.push(face);
     }
 
     // this is where we do rendering :)
-    for face in faces {
+    bb.make_square();
+    let bb_strings: Vec<_> = dbs
+        .into_iter()
+        .map(|mut db| {
+            db.bb = bb.reproject_bb(&db.bb);
+            db.triangle = bb.reproject_triangle(&db.triangle);
+            db.to_js_string()
+        })
+        .collect();
+    println!("let bounding_boxes = [");
+    for s in bb_strings {
+        println!("{}", s);
+    }
+    println!("];");
+    println!("const plot = async () => {{");
+    for (i, face) in faces.iter().enumerate() {
         if face.culled {
             continue;
         }
-        count += 1;
+        // if i > 152 {
+        //     break;
+        // }
 
-        for t in face.hair {
+        for t in &face.hair {
             // if t.color == Color::Lime {
             //     continue;
             // }
-            draw_triangle_js(&t, Color::Lime);
+            draw_triangle_js(&bb.reproject_triangle(&t), Color::Lime);
         }
     }
+    println!("}}");
+    eprintln!("{}", count);
     println!("console.log('{}');", count);
 }

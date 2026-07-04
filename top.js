@@ -28,6 +28,8 @@ let box = {
   y2: canvas.height,
 };
 
+let original_box = { ...box };
+
 let pending_box = {
   ...box,
 };
@@ -66,6 +68,23 @@ async function pointerup(e) {
   plot();
 }
 
+const draw_box = (box) => {
+  ctx.strokeStyle = "magenta";
+  ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
+};
+
+const draw_triangle = ({ t: triangle }) => {
+  if (!triangle) return;
+  console.log(triangle);
+  ctx.strokeStyle = "magenta";
+  ctx.beginPath();
+  ctx.moveTo(zx(triangle[0][0]), zy(triangle[0][1]));
+  ctx.lineTo(zx(triangle[1][0]), zy(triangle[1][1]));
+  ctx.lineTo(zx(triangle[2][0]), zy(triangle[2][1]));
+  ctx.lineTo(zx(triangle[0][0]), zy(triangle[0][1]));
+  ctx.stroke();
+};
+
 window.addEventListener("pointerup", pointerup);
 canvas.addEventListener("pointermove", (e) => {
   if (!selecting) return;
@@ -74,13 +93,7 @@ canvas.addEventListener("pointermove", (e) => {
   pending_box.y2 = y;
   clear();
   plot();
-  ctx.strokeStyle = "magenta";
-  ctx.strokeRect(
-    pending_box.x1,
-    pending_box.y1,
-    pending_box.x2 - pending_box.x1,
-    pending_box.y2 - pending_box.y1,
-  );
+  draw_box(pending_box);
 });
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
