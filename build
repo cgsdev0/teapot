@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-{ cat top.js
-  cargo run
-  cat bop.js
-} > main.js
+wasm-pack build --target web
+# { cat top.js
+#   cargo run
+#   cat bop.js
+# } > main.js
