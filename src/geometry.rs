@@ -708,10 +708,13 @@ impl Sub for Triangle {
                     .filter_map(|i| self.lines().find(|l| *l == i))
                     .next()
                     .unwrap();
-                let ap = a
+                let Some(ap) = a
                     .points()
                     .find(|p| dir.dot(&(real[0].point - *p).normalize()).signum() == -1.0)
-                    .unwrap();
+                else {
+                    // this used to panic; since we can't unwind, we do this shid instead
+                    return vec![self];
+                };
                 let b = self.other_line(&a, &ap);
                 let bp = b.other_point(&ap);
                 let c = self.other_line(&b, &bp);

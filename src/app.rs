@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use web_sys::{console, CanvasRenderingContext2d};
+use yew_router::Routable;
 
 use crate::geometry::*;
 
@@ -66,6 +67,21 @@ impl Face {
     }
 }
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Routable)]
+pub enum AppView {
+    #[at("/")]
+    Main,
+    #[at("/no-clip")]
+    NoClip,
+    #[at("/painter/:face")]
+    Painter { face: usize },
+    #[at("/slice/:face/:idx")]
+    SliceView { face: usize, idx: usize },
+    #[not_found]
+    #[at("/404")]
+    NotFound,
+}
+
 pub struct AppState {
     pub faces: Vec<Face>,
     pub ctx: Option<CanvasRenderingContext2d>,
@@ -73,6 +89,7 @@ pub struct AppState {
     pub zoom: BoundingBox,
     pub edges: Vec<Line>,
     pub selected_faces: HashSet<usize>,
+    pub view: AppView,
 }
 
 #[allow(dead_code)]
@@ -129,6 +146,7 @@ impl AppState {
             zoom: BoundingBox::new(),
             edges: vec![],
             selected_faces: std::collections::HashSet::new(),
+            view: AppView::Main,
         }
     }
 
@@ -226,10 +244,6 @@ impl AppState {
         } else {
             println!("ctx.fill();");
         }
-    }
-
-    pub fn pointer_click(&mut self) {
-        console::log_1(&format!("Clicked: {:?}", self.selected_faces).into());
     }
 
     pub fn render(&self) {
@@ -357,10 +371,93 @@ impl AppState {
         }
     }
 
-    pub fn start(&mut self, ctx: CanvasRenderingContext2d) {
-        self.ctx = Some(ctx);
-        self.reset_zoom();
+    pub fn backface_culling(&mut self) {
+        for face in self.faces.iter_mut() {
+            let n = face.calc_normal();
+            let c = face.calc_centroid().normalize();
+            let which_way = n.dot(&c);
+            if which_way <= 0.0.into() {
+                face.culled = true;
+            }
+        }
+    }
+
+    pub fn reasonable_culling(&mut self) {
+        let mut drawn: Vec<&mut Face> = vec![];
+        // this is where it gets hairy
+        for face in self.faces.iter_mut() {
+            if face.culled {
+                continue;
+            }
+            // XXX: this is potentially teapot specific
+            // this culls triangles whose points are all occluded
+            // we might not need it!
+            face.hair = face
+                .hair
+                .clone()
+                .into_iter()
+                .filter(|t| {
+                    let mut a = true;
+                    let mut b = true;
+                    let mut c = true;
+                    for f2 in drawn.iter() {
+                        for t2 in f2.hair.iter() {
+                            if t2.contains(&t.a) {
+                                a = false;
+                            }
+                            if t2.contains(&t.b) {
+                                b = false;
+                            }
+                            if t2.contains(&t.c) {
+                                c = false;
+                            }
+                        }
+                    }
+                    a || b || c
+                })
+                .collect();
+            drawn.push(face);
+        }
+    }
+    pub fn partial_culling(&mut self) {
+        let mut drawn: Vec<&mut Face> = vec![];
+        // it's time to split hairs
+        for (i, face) in self.faces.iter_mut().enumerate() {
+            if face.culled {
+                continue;
+            }
+            if let AppView::Painter { face } = self.view {
+                if i > (face as usize) {
+                    break;
+                }
+            }
+            let mut cut = false;
+            for f2 in drawn.iter() {
+                for t2 in f2.hair.iter() {
+                    let mut haircut: Vec<Triangle> = vec![];
+                    for t in face.hair.iter() {
+                        let mut split = *t - *t2;
+                        if (split.is_empty() || split.len() > 1) && !cut {
+                            cut = true;
+                        }
+                        haircut.append(&mut split);
+                    }
+                    face.hair = haircut;
+                }
+            }
+            drawn.push(face);
+        }
+        if let AppView::Painter { .. } = self.view {
+            // if debug.is_some() {
+            self.faces = drawn.into_iter().map(|d| d.clone()).collect();
+        }
+    }
+
+    pub fn restart(&mut self) {
+        console::log_1(&format!("view: {:?}", self.view).into());
         self.clear();
+        self.edges.clear();
+        self.faces.clear();
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
         let dt: F64 = (std::f64::consts::PI / 2.0).into();
@@ -420,76 +517,21 @@ impl AppState {
         let _count = 0;
         self.faces.sort();
 
-        // backface culling
-        for face in self.faces.iter_mut() {
-            let n = face.calc_normal();
-            let c = face.calc_centroid().normalize();
-            let which_way = n.dot(&c);
-            if which_way <= 0.0.into() {
-                face.culled = true;
+        self.backface_culling();
+        self.reasonable_culling();
+        match self.view {
+            AppView::NoClip => {}
+            _ => {
+                self.partial_culling();
             }
-        }
-        let mut drawn: Vec<&mut Face> = vec![];
-        // this is where it gets hairy
-        for face in self.faces.iter_mut() {
-            if face.culled {
-                continue;
-            }
-            // XXX: this is potentially teapot specific
-            // this culls triangles whose points are all occluded
-            // we might not need it!
-            face.hair = face
-                .hair
-                .clone()
-                .into_iter()
-                .filter(|t| {
-                    let mut a = true;
-                    let mut b = true;
-                    let mut c = true;
-                    for f2 in drawn.iter() {
-                        for t2 in f2.hair.iter() {
-                            if t2.contains(&t.a) {
-                                a = false;
-                            }
-                            if t2.contains(&t.b) {
-                                b = false;
-                            }
-                            if t2.contains(&t.c) {
-                                c = false;
-                            }
-                        }
-                    }
-                    a || b || c
-                })
-                .collect();
-            drawn.push(face);
-        }
-        drop(drawn);
-
-        let mut drawn: Vec<&mut Face> = vec![];
-        // it's time to split hairs
-        for face in self.faces.iter_mut() {
-            if face.culled {
-                continue;
-            }
-            let mut cut = false;
-            for f2 in drawn.iter() {
-                for t2 in f2.hair.iter() {
-                    let mut haircut: Vec<Triangle> = vec![];
-                    for t in face.hair.iter() {
-                        let mut split = *t - *t2;
-                        if (split.is_empty() || split.len() > 1) && !cut {
-                            cut = true;
-                        }
-                        haircut.append(&mut split);
-                    }
-                    face.hair = haircut;
-                }
-            }
-            drawn.push(face);
-        }
+        };
 
         self.bb.make_square();
         self.find_edges();
+    }
+
+    pub fn start(&mut self, ctx: CanvasRenderingContext2d) {
+        self.ctx = Some(ctx);
+        self.reset_zoom();
     }
 }

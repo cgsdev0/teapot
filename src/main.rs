@@ -1,21 +1,42 @@
 use crate::app::*;
 use wasm_bindgen::{prelude::Closure, JsCast};
-use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::{console, window, CanvasRenderingContext2d, HtmlCanvasElement, HtmlInputElement};
 use yew::prelude::*;
+use yew_router::prelude::*;
 
 mod app;
 mod geometry;
 
+fn switch(routes: AppView) -> Html {
+    html! { <App {routes} /> }
+}
+
+#[component(Main)]
+fn app() -> Html {
+    html! {
+        <BrowserRouter>
+            <Switch<AppView> render={switch} />
+        </BrowserRouter>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct Props {
+    pub routes: AppView,
+}
+
 #[component]
-fn App() -> Html {
+fn App(props: &Props) -> Html {
+    let routes = props.routes;
+    let navigator = use_navigator().unwrap();
     let canvas_ref = use_node_ref();
 
     // let selecting = use_mut_ref(|| false);
     let selection = use_mut_ref::<Option<(i32, i32, i32, i32)>, _>(|| None);
-
     let zoomed_in = use_state(|| false);
-
+    let partial_culling = use_state(|| true);
     let app = use_mut_ref(AppState::new);
+
     {
         let canvas_ref = canvas_ref.clone();
         let app = app.clone();
@@ -134,12 +155,19 @@ fn App() -> Html {
         let canvas_ref = canvas_ref.clone();
         let app = app.clone();
         let selection = selection.clone();
+        let navigator = navigator.clone();
         use_effect_with(canvas_ref, move |_canvas_ref| {
             let pointerup = Closure::<dyn Fn(Event)>::new(move |_e: Event| {
                 let mut selection = selection.borrow_mut();
                 match &*selection {
                     Some(s) if s.2 == i32::MAX || s.3 == i32::MAX => {
                         // insufficient drag distance; this is just a click
+                        let app = app.borrow();
+                        console::log_1(&format!("Clicked: {:?}", app.selected_faces).into());
+                        let face = app.selected_faces.iter().next().copied();
+                        if let Some(face) = face {
+                            navigator.push(&AppView::Painter { face: face });
+                        }
                         *selection = None;
                     }
                     Some(s) => {
@@ -171,6 +199,15 @@ fn App() -> Html {
             }
         });
     }
+    {
+        let app = app.clone();
+        use_effect_with(routes, move |routes| {
+            let mut app = app.borrow_mut();
+            app.view = *routes;
+            app.restart();
+            app.render();
+        });
+    }
 
     let reset_zoom = {
         let zoomed_in = zoomed_in.clone();
@@ -182,16 +219,57 @@ fn App() -> Html {
             app.render();
         })
     };
+
+    let click_back = {
+        let navigator = navigator.clone();
+        Callback::from(move |_| {
+            navigator.back();
+        })
+    };
+
+    let onchange_partial_culling = {
+        let partial_culling = partial_culling.clone();
+        let navigator = navigator.clone();
+        Callback::from(move |e: Event| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            partial_culling.set(input.checked());
+            if input.checked() {
+                navigator.replace(&AppView::Main);
+            } else {
+                navigator.replace(&AppView::NoClip);
+            }
+        })
+    };
+
     html! {
         <div>
             <canvas ref={canvas_ref} width={1030} height={765}></canvas>
+            <div class="panel">
+            <button onclick={click_back}>{"Back"}</button>
             if *zoomed_in {
                 <button onclick={reset_zoom}>{"Reset Zoom"}</button>
             }
+            {
+            match routes{
+                AppView::Main | AppView::NoClip => {
+                html! {
+                    <label>
+                    <input
+                        type="checkbox"
+                        checked={*partial_culling}
+                        onchange={onchange_partial_culling} />
+                    {"Partial Culling"}
+                    </label>
+                }
+                }
+                _ => html! {}
+            }
+            }
+                </div>
         </div>
     }
 }
 
 fn main() {
-    yew::Renderer::<App>::new().render();
+    yew::Renderer::<Main>::new().render();
 }

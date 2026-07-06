@@ -20,3 +20,4 @@ web-sys = {
   ]
 }
 yew = { version = "0.23", features = ["csr"] }
+yew-router = "0.20.0"
