@@ -90,6 +90,7 @@ fn App() -> Html {
                         let (sx, sy, _, _) = *s;
                         if (sx - offset_x).abs() <= 5 && (sy - offset_y).abs() <= 5 {
                             // small drag, ignore
+                            app.borrow_mut().move_pointer(offset_x, offset_y);
                             return;
                         }
                         *selection = Some((sx, sy, offset_x, offset_y));
@@ -104,7 +105,9 @@ fn App() -> Html {
                             (offset_y - sy).into(),
                         );
                     }
-                    None => {}
+                    None => {
+                        app.borrow_mut().move_pointer(offset_x, offset_y);
+                    }
                 };
             });
 
@@ -132,12 +135,7 @@ fn App() -> Html {
         let app = app.clone();
         let selection = selection.clone();
         use_effect_with(canvas_ref, move |canvas_ref| {
-            let canvas = canvas_ref
-                .cast::<HtmlCanvasElement>()
-                .expect("canvas_ref not attached to canvas element");
-
             let pointerup = Closure::<dyn Fn(Event)>::new(move |e: Event| {
-                let e = e.dyn_into::<PointerEvent>().unwrap();
                 let mut selection = selection.borrow_mut();
                 match &*selection {
                     Some(s) if s.2 == i32::MAX || s.3 == i32::MAX => {
@@ -179,7 +177,6 @@ fn App() -> Html {
         let app = app.clone();
         Callback::from(move |_| {
             let mut app = app.borrow_mut();
-            console::log_1(&"clicked!".into());
             zoomed_in.set(false);
             app.reset_zoom();
             app.render();

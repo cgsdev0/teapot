@@ -6,7 +6,7 @@ use std::ops::{Add, Mul, Sub};
 
 pub type F64 = OrderedFloat<f64>;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FacePart {
     pub vertex: Point,
     pub normal: Point,
@@ -282,6 +282,13 @@ impl BoundingBox {
             BBMode::FromTopLeft => (p - start) * (dim / (end - start)),
         }
     }
+
+    pub fn unproject1d(&self, p: f64, start: f64, end: f64, dim: f64) -> f64 {
+        match self.mode {
+            BBMode::FromCenter => (p + 1.0) / 2.0 * (end - start) + start,
+            BBMode::FromTopLeft => p / dim * (end - start) + start,
+        }
+    }
     // re-project a point zoomed to fit the bounding box
     pub fn reproject(&self, point: &Point) -> Point {
         // let zx = (x) => (x - box.x1) * (canvas.width / (box.x2 - box.x1));
@@ -296,21 +303,12 @@ impl BoundingBox {
     }
 
     pub fn unproject(&self, point: &Point) -> Point {
-        match self.mode {
-            BBMode::FromTopLeft => {
-                // let ux = (x) => (x / canvas.width) * (box.x2 - box.x1) + box.x1;
-                // let uy = (y) => (y / canvas.height) * (box.y2 - box.y1) + box.y1;
-                let xrange = (point.x) / 1030.0 * (self.max.x - self.min.x) + self.min.x;
-                let yrange = (point.y) / 765.0 * (self.max.y - self.min.y) + self.min.y;
-                Point {
-                    x: xrange,
-                    y: yrange,
-                    z: 0.0.into(),
-                }
-            }
-            _ => {
-                std::unimplemented!()
-            }
+        let xrange = self.unproject1d(point.x.into(), self.min.x.into(), self.max.x.into(), 1030.0);
+        let yrange = self.unproject1d(point.y.into(), self.min.y.into(), self.max.y.into(), 765.0);
+        Point {
+            x: xrange.into(),
+            y: yrange.into(),
+            z: 0.0.into(),
         }
     }
 
@@ -765,6 +763,14 @@ pub struct Face {
     pub ears: FacePart,
     pub hair: Vec<Triangle>,
     pub culled: bool,
+}
+
+impl Hash for Face {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.eyes.hash(state);
+        self.noes.hash(state);
+        self.ears.hash(state);
+    }
 }
 
 // 3. Implement PartialOrd (Required by Ord)

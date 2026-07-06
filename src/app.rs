@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::CanvasRenderingContext2d;
+use web_sys::{console, CanvasRenderingContext2d};
 
 use crate::geometry::*;
 
@@ -11,6 +11,7 @@ pub struct AppState {
     pub bb: BoundingBox,
     pub zoom: BoundingBox,
     pub edges: Vec<Line>,
+    pub selected_faces: HashSet<usize>,
 }
 
 #[allow(dead_code)]
@@ -53,6 +54,7 @@ enum Color {
     Lhs,
     Rhs,
     Difference,
+    Selected,
 }
 
 const TEAPOT: &str = include_str!("../teapot.obj");
@@ -65,6 +67,7 @@ impl AppState {
             bb: BoundingBox::new(),
             zoom: BoundingBox::new(),
             edges: vec![],
+            selected_faces: std::collections::HashSet::new(),
         }
     }
 
@@ -90,6 +93,7 @@ impl AppState {
         let ctx = self.ctx.as_ref().unwrap();
         match color {
             Color::Lime => {
+                ctx.set_fill_style_str("#ffffff30");
                 ctx.set_stroke_style_str("transparent");
             }
             Color::Lhs => {
@@ -102,6 +106,10 @@ impl AppState {
             Color::Difference => {
                 ctx.set_fill_style_str("transparent");
                 ctx.set_stroke_style_str("blue");
+            }
+            Color::Selected => {
+                ctx.set_fill_style_str("#00ff0030");
+                ctx.set_stroke_style_str("lime");
             }
         }
         ctx.begin_path();
@@ -127,6 +135,7 @@ impl AppState {
         ctx.stroke();
     }
 
+    // TODO: would be nice to refactor this to return Point
     fn to_canvas(&self, p: Point) -> (F64, F64) {
         let new_point = self.zoom.reproject(&Point {
             x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5).into(),
@@ -134,6 +143,15 @@ impl AppState {
             z: 0.0.into(),
         });
         (new_point.x, new_point.y)
+    }
+
+    fn from_canvas(&self, p: &Point) -> Point {
+        let p = self.zoom.unproject(&p);
+        Point {
+            x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0).into(),
+            y: (-((p.y * 2.0 / 765.0) - 1.0)).into(),
+            z: 0.0.into(),
+        }
     }
 
     fn draw_point(&self, point: Point, color: &str, open: bool) {
@@ -164,7 +182,11 @@ impl AppState {
                 //     continue;
                 // }
                 let t = self.bb.reproject_triangle(&t);
-                self.draw_triangle(&t, Color::Lime);
+                if self.selected_faces.contains(&i) {
+                    self.draw_triangle(&t, Color::Selected);
+                } else {
+                    self.draw_triangle(&t, Color::Lime);
+                }
             }
         }
         for &edge in self.edges.iter() {
@@ -235,6 +257,39 @@ impl AppState {
             y: 765.0.into(),
             z: 0.0.into(),
         });
+    }
+
+    pub fn move_pointer(&mut self, x: i32, y: i32) {
+        let p = Point {
+            x: x.into(),
+            y: y.into(),
+            z: 0.0.into(),
+        };
+        let p = self.from_canvas(&p);
+        let p = self.bb.unproject(&p);
+        let mut dirty = false;
+        for (i, face) in self.faces.iter().enumerate() {
+            if face.culled {
+                continue;
+            }
+            for t in face.hair.iter() {
+                if t.contains(&p) {
+                    if !dirty {
+                        dirty = true;
+                        self.selected_faces.clear();
+                    }
+                    self.selected_faces.insert(i);
+                    break;
+                }
+            }
+        }
+        if !dirty && self.selected_faces.iter().count() > 0 {
+            dirty = true;
+            self.selected_faces.clear();
+        }
+        if dirty {
+            self.render();
+        }
     }
 
     pub fn start(&mut self, ctx: CanvasRenderingContext2d) {
