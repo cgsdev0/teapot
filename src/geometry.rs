@@ -6,12 +6,6 @@ use std::ops::{Add, Mul, Sub};
 
 pub type F64 = OrderedFloat<f64>;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FacePart {
-    pub vertex: Point,
-    pub normal: Point,
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct Line {
     pub a: Point,
@@ -399,20 +393,20 @@ impl Sub for Triangle {
                 let intersections = real.iter().filter(|i| i.on_line(line)).count();
                 if self_included.contains(&line.b)
                     && !self_included.contains(&line.a)
-                        && !shared.contains(&line.a)
-                        && intersections == 0
-                    {
-                        self_included.remove(&line.b);
-                        shared.insert(line.b);
-                    }
+                    && !shared.contains(&line.a)
+                    && intersections == 0
+                {
+                    self_included.remove(&line.b);
+                    shared.insert(line.b);
+                }
                 if self_included.contains(&line.a)
                     && !self_included.contains(&line.b)
-                        && !shared.contains(&line.b)
-                        && intersections == 0
-                    {
-                        self_included.remove(&line.a);
-                        shared.insert(line.a);
-                    }
+                    && !shared.contains(&line.b)
+                    && intersections == 0
+                {
+                    self_included.remove(&line.a);
+                    shared.insert(line.a);
+                }
             }
         }
         let scount = self_included.len();
@@ -734,7 +728,8 @@ impl Sub for Triangle {
             (1, _, 1, 0, 1) => {
                 polys.push(ConvexPolygon(vec![
                     real[0].point,
-                    self.points().find(|p| !self_included.contains(p) && !shared.contains(p))
+                    self.points()
+                        .find(|p| !self_included.contains(p) && !shared.contains(p))
                         .unwrap(),
                     *shared.iter().next().unwrap(),
                 ]));
@@ -750,60 +745,6 @@ impl Sub for Triangle {
             .flat_map(|poly| poly.triangulate())
             .filter(|tri| tri.area() > 0.0)
             .collect()
-    }
-}
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Face {
-    pub eyes: FacePart,
-    pub noes: FacePart,
-    pub ears: FacePart,
-    pub hair: Vec<Triangle>,
-    pub culled: bool,
-}
-
-impl Hash for Face {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.eyes.hash(state);
-        self.noes.hash(state);
-        self.ears.hash(state);
-    }
-}
-
-// 3. Implement PartialOrd (Required by Ord)
-impl PartialOrd for Face {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other)) // Simply defer to the total Ord implementation
-    }
-}
-
-// 4. Implement Ord (The total ordering logic)
-impl Ord for Face {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Compare x first. If they are equal, move to y, then z.
-        self.calc_centroid().z.total_cmp(&other.calc_centroid().z)
-    }
-}
-
-impl Face {
-    pub fn calc_centroid(&self) -> Point {
-        let a = self.eyes.vertex;
-        let b = self.noes.vertex;
-        let c = self.ears.vertex;
-        Point {
-            x: (a.x + b.x + c.x) / 3.0,
-            y: (a.y + b.y + c.y) / 3.0,
-            z: (a.z + b.z + c.z) / 3.0,
-        }
-    }
-    pub fn calc_normal(&self) -> Point {
-        let a = self.eyes.vertex - self.noes.vertex;
-        let b = self.ears.vertex - self.noes.vertex;
-        Point {
-            x: a.y * b.z - a.z * b.y,
-            y: a.z * b.x - a.x * b.z,
-            z: a.x * b.y - a.y * b.x,
-        }
-        .normalize()
     }
 }
 
