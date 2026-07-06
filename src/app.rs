@@ -1,8 +1,5 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hasher,
-    panic::AssertUnwindSafe,
-};
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 use web_sys::{console, CanvasRenderingContext2d};
 
