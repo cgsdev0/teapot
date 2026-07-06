@@ -1,55 +1,5 @@
-<html>
-  <head>
-    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
-  </head>
-  <body>
-    <script type="module">
-      import init, { init_app }  from './pkg/something.js';
-
-      async function run() {
-        await init();
-
-        let app = init_app();
-        console.log(app);
-
-        app.render();
-
-        const ctx = app.ctx;
-        const canvas = ctx.canvas;
-
-        // set up drag select
-        let selecting = false;
-        let pending_box = { x1: 0, y1: 0, x2: 0, y2: 0 };
-        canvas.addEventListener("pointerdown", (e) => {
-          const { offsetX: x, offsetY: y } = e;
-          pending_box.x1 = x;
-          pending_box.y1 = y;
-          selecting = true;
-        });
-        async function pointerup(e) {
-          if (!selecting) return;
-          selecting = false;
-          console.log(pending_box);
-          const {x1, y1, x2, y2} = pending_box;
-          app.zoom_to(x1, y1, x2, y2);
-
-          app.render();
-        }
-        const draw_box = (box) => {
-          ctx.strokeStyle = "magenta";
-          ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
-        };
-        window.addEventListener("pointerup", pointerup);
-        canvas.addEventListener("pointermove", (e) => {
-          if (!selecting) return;
-          const { offsetX: x, offsetY: y } = e;
-          pending_box.x2 = x;
-          pending_box.y2 = y;
-          app.render();
-          draw_box(pending_box);
-        });
-      }
-      run();
-    </script>
-  </body>
+<!doctype html>
+<html lang="en">
+    <head></head>
+    <body></body>
 </html>

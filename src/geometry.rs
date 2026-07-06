@@ -1,156 +1,21 @@
-// based on the video https://www.youtube.com/watch?v=qjWkNZ0SXfo
-// by tsoding :D
-
-use wasm_bindgen::prelude::*;
-use web_sys::{console, CanvasRenderingContext2d, HtmlCanvasElement};
-
+use ordered_float::OrderedFloat;
 use std::array::IntoIter;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
-use ordered_float::OrderedFloat;
-
-type F64 = OrderedFloat<f64>;
-
-const TEAPOT: &str = include_str!("../teapot.obj");
-
-// use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-
-// static EVIL_MODE: AtomicBool = AtomicBool::new(false);
-// static DONT_RECURSE: AtomicBool = AtomicBool::new(false);
-// static DONT_RECURSE2: AtomicBool = AtomicBool::new(false);
-// static SKIP: AtomicI32 = AtomicI32::new(0);
-
-// fn cursed_subtraction_debug(
-//     t: &Triangle,
-//     cutter: &Triangle,
-//     i: &Vec<Intersection>,
-//     want_panic: bool,
-// ) {
-//     return;
-//     if !EVIL_MODE.load(Ordering::Relaxed) {
-//         return;
-//     }
-//     let skip = SKIP.load(Ordering::Relaxed);
-//     if skip < 4 && !want_panic {
-//         SKIP.store(skip + 1, Ordering::Relaxed);
-//         return;
-//     }
-//     if want_panic {
-//         if DONT_RECURSE.load(Ordering::Relaxed) {
-//             return;
-//         }
-//         DONT_RECURSE.store(true, Ordering::Relaxed);
-//     } else {
-//         if DONT_RECURSE2.load(Ordering::Relaxed) {
-//             return;
-//         }
-//         DONT_RECURSE2.store(true, Ordering::Relaxed);
-//     }
-//     eprintln!("cursed entry");
-//     let mut bb = BoundingBox::new();
-//     bb.expand(&t.a);
-//     bb.expand(&t.b);
-//     bb.expand(&t.c);
-//     // bb.expand(&cutter.a);
-//     // bb.expand(&cutter.b);
-//     // bb.expand(&cutter.c);
-//     let t2 = bb.reproject_triangle(t);
-//     let c2 = bb.reproject_triangle(cutter);
-//     let draw = |tris: Vec<Triangle>| {
-//         eprintln!("{:?}", t);
-//         println!("const bounding_boxes = null;");
-//         println!("const plot = async () => {{");
-
-//         bb.draw();
-//         draw_triangle_js(&t2, Color::Lhs);
-//         draw_triangle_js(&c2, Color::Rhs);
-//         let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
-//         for point in [t2.a, t2.b, t2.c, c2.a, c2.b, c2.c] {
-//             match points.get(&point) {
-//                 Some(count) => {
-//                     points.insert(point, count + 1);
-//                 }
-//                 None => {
-//                     points.insert(point, 1);
-//                 }
-//             }
-//         }
-//         for (point, count) in points.iter() {
-//             draw_point_js(
-//                 *point,
-//                 match count {
-//                     1 => "magenta",
-//                     _ => "yellow",
-//                 },
-//                 false,
-//             );
-//         }
-//         for aye in i
-//             .iter()
-//             .filter(|i| i.real && t.points().all(|p| i.point.dist2(&p) > f64::EPSILON.into()))
-//         {
-//             let eye = bb.reproject(&aye.point);
-//             if !aye.projected && !aye.real {
-//                 continue;
-//             }
-//             draw_point_js(
-//                 eye,
-//                 if aye.projected { "#33aaff" } else { "#fff" },
-//                 !aye.real,
-//             );
-//         }
-//         for t in tris {
-//             draw_triangle_js(&bb.reproject_triangle(&t), Color::Difference);
-//         }
-//         println!("}}");
-//     };
-//     if want_panic {
-//         let res = std::panic::catch_unwind(|| {
-//             // we don't care about the result;
-//             // either this panics and we draw,
-//             // or it doesn't panic and we don't care anyways.
-//             let _ = *t - *cutter;
-//         });
-//         match res {
-//             Err(_) => {
-//                 eprintln!("PANIC CAPTURED");
-//                 draw(vec![]);
-//             }
-//             Ok(_) => {
-//                 // no panic? lame
-//                 DONT_RECURSE.store(false, Ordering::Relaxed);
-//                 return;
-//             }
-//         }
-//     } else {
-//         let split = *t - *cutter;
-//         // eprintln!("{} splits", split.len());
-//         draw(split);
-//     }
-//     // eprintln!("{:?}\n\n{:?}\n\n{:?}", bb, t, cutter);
-//     std::process::exit(0);
-// }
-
-#[allow(dead_code)]
-fn draw_line_paper(p1: Point, p2: Point) {
-    let (x, y) = paper(p1);
-    println!("PU{},{};", x, y);
-    let (x, y) = paper(p2);
-    println!("PD{},{};", x, y);
-}
+pub type F64 = OrderedFloat<f64>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-struct FacePart {
-    vertex: Point,
-    normal: Point,
+pub struct FacePart {
+    pub vertex: Point,
+    pub normal: Point,
 }
 
 #[derive(Copy, Clone, Debug)]
-struct Line {
-    a: Point,
-    b: Point,
+pub struct Line {
+    pub a: Point,
+    pub b: Point,
 }
 
 impl PartialEq for Line {
@@ -161,25 +26,25 @@ impl PartialEq for Line {
 
 impl Eq for Line {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-struct Intersection {
-    a: Line,
-    b: Line,
-    point: Point,
-    real: bool,
-    projected: bool,
+pub struct Intersection {
+    pub a: Line,
+    pub b: Line,
+    pub point: Point,
+    pub real: bool,
+    pub projected: bool,
 }
 
 impl Intersection {
-    fn shares_line_with(&self, other: &Intersection) -> bool {
+    pub fn shares_line_with(&self, other: &Intersection) -> bool {
         self.a == other.a || self.b == other.b || self.a == other.b || self.b == other.a
     }
-    fn lines(&self) -> IntoIter<Line, 2> {
+    pub fn lines(&self) -> IntoIter<Line, 2> {
         [self.a, self.b].into_iter()
     }
-    fn on_line(&self, line: Line) -> bool {
+    pub fn on_line(&self, line: Line) -> bool {
         self.a == line || self.b == line
     }
-    fn other_line(&self, line: Line) -> Line {
+    pub fn other_line(&self, line: Line) -> Line {
         if self.a == line {
             self.b
         } else {
@@ -201,10 +66,10 @@ impl Hash for Line {
 }
 
 impl Line {
-    fn points(&self) -> IntoIter<Point, 2> {
+    pub fn points(&self) -> IntoIter<Point, 2> {
         [self.a, self.b].into_iter()
     }
-    fn other_point(&self, point: &Point) -> Point {
+    pub fn other_point(&self, point: &Point) -> Point {
         if self.a == *point {
             self.b
         } else {
@@ -212,15 +77,15 @@ impl Line {
         }
     }
 
-    fn shares_point_with(&self, other: &Self) -> bool {
+    pub fn shares_point_with(&self, other: &Self) -> bool {
         self.a == other.a || self.b == other.b || self.b == other.a || self.a == other.b
     }
 
-    fn has_point(&self, p: Point) -> bool {
+    pub fn has_point(&self, p: Point) -> bool {
         self.a == p || self.b == p
     }
 
-    fn parallel_with(&self, other: &Line) -> bool {
+    pub fn parallel_with(&self, other: &Line) -> bool {
         let slope_a = self.b - self.a;
         let slope_a = slope_a.y / slope_a.x;
         let slope_b = other.b - other.a;
@@ -229,7 +94,7 @@ impl Line {
         diff.abs() < f64::EPSILON * 5000.0
     }
 
-    fn intersection(&self, other: &Line) -> Option<Intersection> {
+    pub fn intersection(&self, other: &Line) -> Option<Intersection> {
         if self == other || self.parallel_with(other) {
             None
         } else {
@@ -259,26 +124,18 @@ impl Line {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Color {
-    Lime,
-    Lhs,
-    Rhs,
-    Difference,
-}
-
 #[derive(Copy, Clone, Debug)]
-struct Triangle {
-    a: Point,
-    b: Point,
-    c: Point,
+pub struct Triangle {
+    pub a: Point,
+    pub b: Point,
+    pub c: Point,
 }
 
 impl Triangle {
-    fn points(&self) -> IntoIter<Point, 3> {
+    pub fn points(&self) -> IntoIter<Point, 3> {
         [self.a, self.b, self.c].into_iter()
     }
-    fn lines(&self) -> IntoIter<Line, 3> {
+    pub fn lines(&self) -> IntoIter<Line, 3> {
         [
             Line {
                 a: self.a,
@@ -295,15 +152,15 @@ impl Triangle {
         ]
         .into_iter()
     }
-    fn my_lines(&self, point: &Point) -> Vec<Line> {
+    pub fn my_lines(&self, point: &Point) -> Vec<Line> {
         self.lines().filter(|l| l.has_point(*point)).collect()
     }
-    fn other_line(&self, line: &Line, point: &Point) -> Line {
+    pub fn other_line(&self, line: &Line, point: &Point) -> Line {
         self.lines()
             .find(|l| l != line && l.has_point(*point))
             .unwrap()
     }
-    fn intersections(&self, other: &Triangle) -> Vec<Intersection> {
+    pub fn intersections(&self, other: &Triangle) -> Vec<Intersection> {
         let mut result = vec![];
         for l1 in self.lines() {
             for l2 in other.lines() {
@@ -317,7 +174,7 @@ impl Triangle {
         }
         result
     }
-    fn contains(&self, point: &Point) -> bool {
+    pub fn contains(&self, point: &Point) -> bool {
         if *point == self.a || *point == self.b || *point == self.c {
             return false;
         }
@@ -336,7 +193,7 @@ impl Triangle {
                     - (self.a.y - self.c.y) * (point.x - self.c.x))
                 >= 0.0.into()
     }
-    fn area(&self) -> f64 {
+    pub fn area(&self) -> f64 {
         let a = self.a.x * (self.b.y - self.c.y)
             + self.b.x * (self.c.y - self.a.y)
             + self.c.x * (self.a.y - self.b.y);
@@ -351,9 +208,10 @@ impl PartialEq for Triangle {
 }
 
 #[derive(Debug)]
-struct ConvexPolygon(Vec<Point>);
+pub struct ConvexPolygon(Vec<Point>);
+
 impl ConvexPolygon {
-    fn triangulate(&self) -> Vec<Triangle> {
+    pub fn triangulate(&self) -> Vec<Triangle> {
         let mut result = vec![];
         for i in 0..self.0.len() - 2 {
             result.push(Triangle {
@@ -362,37 +220,25 @@ impl ConvexPolygon {
                 c: self.0[i + 2],
             });
         }
-        // eprintln!(
-        //     "Turned {} points into {} triangles",
-        //     self.0.len(),
-        //     result.len()
-        // );
-        // eprintln!("{:?}\n", result);
         result
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-enum BBMode {
+pub enum BBMode {
     FromCenter,
     FromTopLeft,
 }
 
 #[derive(Debug)]
-struct BoundingBox {
-    min: Point,
-    max: Point,
-    mode: BBMode,
-}
-
-struct FaceDebug {
-    bb: BoundingBox,
-    face_id: usize,
-    triangle: Triangle,
+pub struct BoundingBox {
+    pub min: Point,
+    pub max: Point,
+    pub mode: BBMode,
 }
 
 impl BoundingBox {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             min: Point {
                 x: f64::INFINITY.into(),
@@ -407,7 +253,7 @@ impl BoundingBox {
             mode: BBMode::FromCenter,
         }
     }
-    fn make_square(&mut self) {
+    pub fn make_square(&mut self) {
         let dx = self.max.x - self.min.x;
         let dy = self.max.y - self.min.y;
         if dy > dx {
@@ -421,7 +267,7 @@ impl BoundingBox {
         }
     }
 
-    fn expand(&mut self, point: &Point) {
+    pub fn expand(&mut self, point: &Point) {
         self.min.x = self.min.x.min(point.x);
         self.min.y = self.min.y.min(point.y);
         self.min.z = self.min.z.min(point.z);
@@ -430,14 +276,14 @@ impl BoundingBox {
         self.max.z = self.max.z.max(point.z);
     }
 
-    fn reproject1d(&self, p: f64, start: f64, end: f64, dim: f64) -> f64 {
+    pub fn reproject1d(&self, p: f64, start: f64, end: f64, dim: f64) -> f64 {
         match self.mode {
             BBMode::FromCenter => (p - start) / (end - start) * 2.0 - 1.0,
             BBMode::FromTopLeft => (p - start) * (dim / (end - start)),
         }
     }
     // re-project a point zoomed to fit the bounding box
-    fn reproject(&self, point: &Point) -> Point {
+    pub fn reproject(&self, point: &Point) -> Point {
         // let zx = (x) => (x - box.x1) * (canvas.width / (box.x2 - box.x1));
         // let zy = (y) => (y - box.y1) * (canvas.height / (box.y2 - box.y1));
         let xrange = self.reproject1d(point.x.into(), self.min.x.into(), self.max.x.into(), 1030.0);
@@ -449,19 +295,26 @@ impl BoundingBox {
         }
     }
 
-    fn unproject(&self, point: &Point) -> Point {
-        // let ux = (x) => (x / canvas.width) * (box.x2 - box.x1) + box.x1;
-        // let uy = (y) => (y / canvas.height) * (box.y2 - box.y1) + box.y1;
-        let xrange = (point.x) / 1030.0 * (self.max.x - self.min.x) + self.min.x;
-        let yrange = (point.y) / 765.0 * (self.max.y - self.min.y) + self.min.y;
-        Point {
-            x: xrange,
-            y: yrange,
-            z: 0.0.into(),
+    pub fn unproject(&self, point: &Point) -> Point {
+        match self.mode {
+            BBMode::FromTopLeft => {
+                // let ux = (x) => (x / canvas.width) * (box.x2 - box.x1) + box.x1;
+                // let uy = (y) => (y / canvas.height) * (box.y2 - box.y1) + box.y1;
+                let xrange = (point.x) / 1030.0 * (self.max.x - self.min.x) + self.min.x;
+                let yrange = (point.y) / 765.0 * (self.max.y - self.min.y) + self.min.y;
+                Point {
+                    x: xrange,
+                    y: yrange,
+                    z: 0.0.into(),
+                }
+            }
+            _ => {
+                std::unimplemented!()
+            }
         }
     }
 
-    fn reproject_bb(&self, bb: &BoundingBox) -> BoundingBox {
+    pub fn reproject_bb(&self, bb: &BoundingBox) -> BoundingBox {
         BoundingBox {
             min: self.reproject(&bb.min),
             max: self.reproject(&bb.max),
@@ -469,13 +322,13 @@ impl BoundingBox {
         }
     }
 
-    fn reproject_line(&self, edge: &Line) -> Line {
+    pub fn reproject_line(&self, edge: &Line) -> Line {
         Line {
             a: self.reproject(&edge.a),
             b: self.reproject(&edge.b),
         }
     }
-    fn reproject_triangle(&self, tri: &Triangle) -> Triangle {
+    pub fn reproject_triangle(&self, tri: &Triangle) -> Triangle {
         Triangle {
             a: self.reproject(&tri.a),
             b: self.reproject(&tri.b),
@@ -906,12 +759,12 @@ impl Sub for Triangle {
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Face {
-    eyes: FacePart,
-    noes: FacePart,
-    ears: FacePart,
-    hair: Vec<Triangle>,
-    culled: bool,
+pub struct Face {
+    pub eyes: FacePart,
+    pub noes: FacePart,
+    pub ears: FacePart,
+    pub hair: Vec<Triangle>,
+    pub culled: bool,
 }
 
 // 3. Implement PartialOrd (Required by Ord)
@@ -930,7 +783,7 @@ impl Ord for Face {
 }
 
 impl Face {
-    fn calc_centroid(&self) -> Point {
+    pub fn calc_centroid(&self) -> Point {
         let a = self.eyes.vertex;
         let b = self.noes.vertex;
         let c = self.ears.vertex;
@@ -940,7 +793,7 @@ impl Face {
             z: (a.z + b.z + c.z) / 3.0,
         }
     }
-    fn calc_normal(&self) -> Point {
+    pub fn calc_normal(&self) -> Point {
         let a = self.eyes.vertex - self.noes.vertex;
         let b = self.ears.vertex - self.noes.vertex;
         Point {
@@ -953,10 +806,10 @@ impl Face {
 }
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-struct Point {
-    x: F64,
-    y: F64,
-    z: F64,
+pub struct Point {
+    pub x: F64,
+    pub y: F64,
+    pub z: F64,
 }
 
 impl std::fmt::Debug for Point {
@@ -967,7 +820,7 @@ impl std::fmt::Debug for Point {
 }
 
 impl Point {
-    fn normalize(&self) -> Point {
+    pub fn normalize(&self) -> Point {
         let mag = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
         Point {
             x: self.x / mag,
@@ -976,18 +829,22 @@ impl Point {
         }
     }
 
-    fn dot(&self, other: &Point) -> F64 {
+    pub fn dot(&self, other: &Point) -> F64 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
 
-    fn dist2(&self, other: &Point) -> F64 {
+    pub fn dist2(&self, other: &Point) -> F64 {
         let x = other.x - self.x;
         let y = other.y - self.y;
         let z = other.z - self.z;
         x * x + y * y + z * z
     }
 
-    fn closest_intersection(&self, intersections: &Vec<&Intersection>, line: Line) -> Intersection {
+    pub fn closest_intersection(
+        &self,
+        intersections: &Vec<&Intersection>,
+        line: Line,
+    ) -> Intersection {
         intersections
             .iter()
             .filter(|i| i.on_line(line))
@@ -1048,391 +905,4 @@ impl Mul<F64> for Point {
             z: self.z * s,
         }
     }
-}
-
-#[allow(dead_code)]
-fn paper(p: Point) -> (u16, u16) {
-    (
-        ((p.x.into_inner() + 1.0) / 2.0 * 7650.0 + 1000.0) as u16,
-        (((-p.y).into_inner() + 1.0) / 2.0 * 7650.0) as u16,
-    )
-}
-
-fn project(p: Point) -> Point {
-    Point {
-        x: p.x / (p.z / 2.0),
-        y: p.y / (p.z / 2.0),
-        z: 0.0.into(),
-    }
-}
-
-fn translate(p: Point) -> Point {
-    Point {
-        x: p.x,
-        y: p.y - 0.9,
-        z: p.z + 5.0,
-    }
-}
-
-fn rotate(p: Point, angle: F64) -> Point {
-    let c = angle.cos();
-    let s = angle.sin();
-    Point {
-        x: p.x * c - p.z * s,
-        z: p.x * s + p.z * c,
-        y: p.y,
-    }
-}
-
-fn clear(s: &AppState) {
-    s.ctx.set_line_width(1.0);
-    s.ctx.clear_rect(
-        0.0,
-        0.0,
-        s.ctx.canvas().unwrap().width() as f64,
-        s.ctx.canvas().unwrap().height() as f64,
-    );
-    s.ctx.set_fill_style_str("black");
-    s.ctx.fill_rect(
-        0.0,
-        0.0,
-        s.ctx.canvas().unwrap().width() as f64,
-        s.ctx.canvas().unwrap().height() as f64,
-    );
-    s.ctx.set_fill_style_str("#ffffff30");
-}
-
-// Called when the Wasm module is instantiated
-#[wasm_bindgen(start)]
-fn main() -> Result<(), JsValue> {
-    Ok(())
-}
-
-#[wasm_bindgen]
-pub struct AppState {
-    faces: Vec<Face>,
-    ctx: CanvasRenderingContext2d,
-    bb: BoundingBox,
-    zoom: BoundingBox,
-    edges: Vec<Line>,
-}
-
-#[wasm_bindgen]
-impl AppState {
-    pub fn new(ctx: CanvasRenderingContext2d) -> Self {
-        AppState {
-            ctx,
-            faces: vec![],
-            bb: BoundingBox::new(),
-            zoom: BoundingBox::new(),
-            edges: vec![],
-        }
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn ctx(&self) -> CanvasRenderingContext2d {
-        self.ctx.clone()
-    }
-
-    fn draw_point(&self, point: Point, color: &str, open: bool) {
-        println!("ctx.beginPath();");
-        println!("ctx.fillStyle = '{}';", color);
-        println!("ctx.strokeStyle = '{}';", color);
-        let (x, y) = self.to_canvas(point);
-        println!("ctx.arc(zx({}), zy({}), 5, 0, 20 * Math.PI);", x, y);
-        if open {
-            println!("ctx.stroke();");
-        } else {
-            println!("ctx.fill();");
-        }
-    }
-
-    fn draw_line(&self, p1: Point, p2: Point) {
-        self.ctx.set_stroke_style_str("red");
-        let (x, y) = self.to_canvas(p1);
-        self.ctx.move_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(p2);
-        self.ctx.line_to(x.into(), y.into());
-        self.ctx.stroke();
-    }
-
-    fn draw_triangle(&self, t: &Triangle, color: Color) {
-        match color {
-            Color::Lime => {
-                self.ctx.set_stroke_style_str("transparent");
-            }
-            Color::Lhs => {
-                self.ctx.set_stroke_style_str("#666");
-            }
-            Color::Rhs => {
-                self.ctx.set_fill_style_str("#ff000030");
-                self.ctx.set_stroke_style_str("red");
-            }
-            Color::Difference => {
-                self.ctx.set_fill_style_str("transparent");
-                self.ctx.set_stroke_style_str("blue");
-            }
-        }
-        self.ctx.begin_path();
-        let (x, y) = self.to_canvas(t.a);
-        self.ctx.move_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(t.b);
-        self.ctx.line_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(t.c);
-        self.ctx.line_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(t.a);
-        self.ctx.line_to(x.into(), y.into());
-        self.ctx.fill();
-        self.ctx.stroke();
-    }
-
-    fn to_canvas(&self, p: Point) -> (F64, F64) {
-        let new_point = self.zoom.reproject(&Point {
-            x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5).into(),
-            y: ((-p.y + 1.0) / 2.0 * 765.0).into(),
-            z: 0.0.into(),
-        });
-        (new_point.x, new_point.y)
-    }
-
-    #[wasm_bindgen]
-    pub fn zoom_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-        let min = self.zoom.unproject(&Point {
-            x: x1.min(x2).into(),
-            y: y1.min(y2).into(),
-            z: 0.0.into(),
-        });
-        let max = self.zoom.unproject(&Point {
-            x: x2.max(x1).into(),
-            y: y2.max(y1).into(),
-            z: 0.0.into(),
-        });
-        self.zoom = BoundingBox {
-            min,
-            max,
-            mode: BBMode::FromTopLeft,
-        };
-        console::log_1(&format!("{:?}", self.zoom).into());
-    }
-
-    #[wasm_bindgen]
-    pub fn render(&self) {
-        clear(&self);
-        for (i, face) in self.faces.iter().enumerate() {
-            if face.culled {
-                continue;
-            }
-            // if i > 274 {
-            //     break;
-            // }
-
-            for t in &face.hair {
-                // if t.color == Color::Lime {
-                //     continue;
-                // }
-                let t = self.bb.reproject_triangle(&t);
-                self.draw_triangle(&t, Color::Lime);
-            }
-        }
-        for &edge in self.edges.iter() {
-            self.draw_line(edge.a, edge.b);
-        }
-    }
-
-    #[wasm_bindgen]
-    pub fn find_edges(&mut self) {
-        let mut edges: HashMap<Line, usize> = std::collections::HashMap::new();
-        for (i, face) in self.faces.iter().enumerate() {
-            if face.culled {
-                continue;
-            }
-            // if i > 274 {
-            //     break;
-            // }
-
-            for t in &face.hair {
-                let t = self.bb.reproject_triangle(&t);
-                for edge in t.lines() {
-                    match edges.get(&edge) {
-                        Some(count) => {
-                            edges.insert(edge, count + 1);
-                        }
-                        None => {
-                            edges.insert(edge, 1);
-                        }
-                    }
-                }
-            }
-        }
-        self.edges = edges
-            .iter()
-            .filter(|&(_, &count)| count == 1)
-            .map(|(&line, _)| line)
-            .collect();
-    }
-}
-
-#[wasm_bindgen]
-pub fn render(app_state: &AppState) {}
-
-#[wasm_bindgen]
-pub fn init_app() -> Result<AppState, JsValue> {
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
-    let body = document.body().expect("document should have a body");
-
-    let element = document.create_element("canvas")?;
-    let canvas = element.dyn_into::<HtmlCanvasElement>()?;
-    canvas.set_width(1030);
-    canvas.set_height(765);
-
-    body.append_child(&canvas)?;
-
-    let ctx = canvas.get_context("2d")?.expect("can't get context");
-    let ctx = ctx.dyn_into::<CanvasRenderingContext2d>()?;
-
-    let mut app_state = AppState::new(ctx);
-    app_state.zoom.mode = BBMode::FromTopLeft;
-    app_state.zoom.expand(&Point {
-        x: 0.0.into(),
-        y: 0.0.into(),
-        z: 0.0.into(),
-    });
-    app_state.zoom.expand(&Point {
-        x: 1030.0.into(),
-        y: 765.0.into(),
-        z: 0.0.into(),
-    });
-    clear(&app_state);
-    let mut v: Vec<Point> = vec![];
-    let mut vn: Vec<Point> = vec![];
-    let dt: F64 = (std::f64::consts::PI / 2.0).into();
-    for line in TEAPOT.lines() {
-        let parts = line.split(" ").collect::<Vec<_>>();
-        match parts[0] {
-            "f" => {
-                let parts = parts
-                    .iter()
-                    .skip(1)
-                    .map(|p| {
-                        let parts = p.split("/").collect::<Vec<_>>();
-                        FacePart {
-                            vertex: translate(rotate(
-                                v[parts[0].parse::<usize>().unwrap() - 1],
-                                dt,
-                            )),
-                            normal: vn[parts[2].parse::<usize>().unwrap() - 1],
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                let face = Face {
-                    eyes: parts[0],
-                    noes: parts[1],
-                    ears: parts[2],
-                    hair: vec![Triangle {
-                        a: project(parts[0].vertex),
-                        b: project(parts[1].vertex),
-                        c: project(parts[2].vertex),
-                    }],
-                    culled: false,
-                };
-                app_state.bb.expand(&face.hair[0].a);
-                app_state.bb.expand(&face.hair[0].b);
-                app_state.bb.expand(&face.hair[0].c);
-                app_state.faces.push(face);
-            }
-            "v" => {
-                v.push(Point {
-                    x: parts[1].parse::<F64>().unwrap(),
-                    y: parts[2].parse::<F64>().unwrap(),
-                    z: parts[3].parse::<F64>().unwrap(),
-                });
-            }
-            "vn" => {
-                vn.push(Point {
-                    x: parts[1].parse::<F64>().unwrap(),
-                    y: parts[2].parse::<F64>().unwrap(),
-                    z: parts[3].parse::<F64>().unwrap(),
-                });
-            }
-            _ => {}
-        }
-    }
-    // let frame = 6;
-
-    let mut count = 0;
-    app_state.faces.sort();
-
-    // backface culling
-    for face in app_state.faces.iter_mut() {
-        let n = face.calc_normal();
-        let c = face.calc_centroid().normalize();
-        let which_way = n.dot(&c);
-        if which_way <= 0.0.into() {
-            face.culled = true;
-        }
-    }
-    let mut drawn: Vec<&mut Face> = vec![];
-    // this is where it gets hairy
-    for face in app_state.faces.iter_mut() {
-        if face.culled {
-            continue;
-        }
-        // XXX: this is potentially teapot specific
-        // this culls triangles whose points are all occluded
-        // we might not need it!
-        face.hair = face
-            .hair
-            .clone()
-            .into_iter()
-            .filter(|t| {
-                let mut a = true;
-                let mut b = true;
-                let mut c = true;
-                for f2 in drawn.iter() {
-                    for t2 in f2.hair.iter() {
-                        if t2.contains(&t.a) {
-                            a = false;
-                        }
-                        if t2.contains(&t.b) {
-                            b = false;
-                        }
-                        if t2.contains(&t.c) {
-                            c = false;
-                        }
-                    }
-                }
-                a || b || c
-            })
-            .collect();
-        drawn.push(face);
-    }
-    drop(drawn);
-
-    let mut drawn: Vec<&mut Face> = vec![];
-    // it's time to split hairs
-    for (i, face) in app_state.faces.iter_mut().enumerate() {
-        if face.culled {
-            continue;
-        }
-        let mut cut = false;
-        for f2 in drawn.iter() {
-            for t2 in f2.hair.iter() {
-                let mut haircut: Vec<Triangle> = vec![];
-                for t in face.hair.iter() {
-                    let mut split = *t - *t2;
-                    if (split.len() == 0 || split.len() > 1) && !cut {
-                        cut = true;
-                    }
-                    haircut.append(&mut split);
-                }
-                face.hair = haircut;
-            }
-        }
-        drawn.push(face);
-    }
-
-    app_state.bb.make_square();
-    app_state.find_edges();
-    Ok(app_state)
 }
