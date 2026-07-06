@@ -222,8 +222,8 @@ impl AppState {
             .collect();
     }
 
-    pub fn start(&mut self, ctx: CanvasRenderingContext2d) {
-        self.ctx = Some(ctx);
+    pub fn reset_zoom(&mut self) {
+        self.zoom = BoundingBox::new();
         self.zoom.mode = BBMode::FromTopLeft;
         self.zoom.expand(&Point {
             x: 0.0.into(),
@@ -235,6 +235,11 @@ impl AppState {
             y: 765.0.into(),
             z: 0.0.into(),
         });
+    }
+
+    pub fn start(&mut self, ctx: CanvasRenderingContext2d) {
+        self.ctx = Some(ctx);
+        self.reset_zoom();
         self.clear();
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];

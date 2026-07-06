@@ -1,6 +1,6 @@
 use crate::app::*;
 use wasm_bindgen::{prelude::Closure, JsCast};
-use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::{console, window, CanvasRenderingContext2d, HtmlCanvasElement};
 use yew::prelude::*;
 
 mod app;
@@ -12,6 +12,8 @@ fn App() -> Html {
 
     // let selecting = use_mut_ref(|| false);
     let selection = use_mut_ref::<Option<(i32, i32, i32, i32)>, _>(|| None);
+
+    let zoomed_in = use_state(|| false);
 
     let app = use_mut_ref(AppState::new);
     {
@@ -37,7 +39,7 @@ fn App() -> Html {
                 let offset_x = e.offset_x();
                 let offset_y = e.offset_y();
                 let mut selection = selection.borrow_mut();
-                *selection = Some((offset_x, offset_y, offset_x, offset_y));
+                *selection = Some((offset_x, offset_y, i32::MAX, i32::MAX));
             });
 
             canvas
@@ -86,6 +88,10 @@ fn App() -> Html {
                 match &*selection {
                     Some(s) => {
                         let (sx, sy, _, _) = *s;
+                        if (sx - offset_x).abs() <= 5 && (sy - offset_y).abs() <= 5 {
+                            // small drag, ignore
+                            return;
+                        }
                         *selection = Some((sx, sy, offset_x, offset_y));
                         let app = app.borrow();
                         app.render();
@@ -121,6 +127,7 @@ fn App() -> Html {
         });
     }
     {
+        let zoomed_in = zoomed_in.clone();
         let canvas_ref = canvas_ref.clone();
         let app = app.clone();
         let selection = selection.clone();
@@ -133,9 +140,14 @@ fn App() -> Html {
                 let e = e.dyn_into::<PointerEvent>().unwrap();
                 let mut selection = selection.borrow_mut();
                 match &*selection {
+                    Some(s) if s.2 == i32::MAX || s.3 == i32::MAX => {
+                        // insufficient drag distance; this is just a click
+                        *selection = None;
+                    }
                     Some(s) => {
                         let (sx, sy, tx, ty) = *s;
                         let mut app = app.borrow_mut();
+                        zoomed_in.set(true);
                         app.zoom_to(sx as f64, sy as f64, tx as f64, ty as f64);
                         app.render();
                         *selection = None;
@@ -162,9 +174,23 @@ fn App() -> Html {
         });
     }
 
+    let reset_zoom = {
+        let zoomed_in = zoomed_in.clone();
+        let app = app.clone();
+        Callback::from(move |_| {
+            let mut app = app.borrow_mut();
+            console::log_1(&"clicked!".into());
+            zoomed_in.set(false);
+            app.reset_zoom();
+            app.render();
+        })
+    };
     html! {
         <div>
             <canvas ref={canvas_ref} width={1030} height={765}></canvas>
+            if *zoomed_in {
+                <button onclick={reset_zoom}>{"Reset Zoom"}</button>
+            }
         </div>
     }
 }
