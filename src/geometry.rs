@@ -363,7 +363,7 @@ impl Sub for Triangle {
             .collect::<Vec<_>>();
         let extras = self.points().filter(|p| {
             i.iter()
-                .any(|i| i.real && i.point.dist2(&p) <= f64::EPSILON.into())
+                .any(|i| i.real && i.point.dist2(p) <= f64::EPSILON.into())
         });
         // let real = i.iter().filter(|i| i.real).collect::<Vec<_>>();
         let projected = i.iter().filter(|i| i.projected).collect::<Vec<_>>();
@@ -371,12 +371,12 @@ impl Sub for Triangle {
         for point in self.points().filter(|a| other.contains(a)).chain(extras) {
             self_included.insert(point);
         }
-        let scount = self_included.iter().count();
+        let scount = self_included.len();
         let mut other_included: HashSet<Point> = std::collections::HashSet::new();
         for point in other.points().filter(|a| self.contains(a)) {
             other_included.insert(point);
         }
-        let ocount = other_included.iter().count();
+        let ocount = other_included.len();
         // let ocount = other.points().filter(|a| self.contains(a)).count();
         let mut polys: Vec<ConvexPolygon> = vec![];
         let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
@@ -393,32 +393,30 @@ impl Sub for Triangle {
             }
         }
         // seek the truth
-        let shared_count = shared.iter().count();
+        let shared_count = shared.len();
         if shared_count + scount < 3 && scount > 0 {
             for line in self.lines() {
                 let intersections = real.iter().filter(|i| i.on_line(line)).count();
-                if self_included.contains(&line.b) {
-                    if !self_included.contains(&line.a)
+                if self_included.contains(&line.b)
+                    && !self_included.contains(&line.a)
                         && !shared.contains(&line.a)
                         && intersections == 0
                     {
                         self_included.remove(&line.b);
                         shared.insert(line.b);
                     }
-                }
-                if self_included.contains(&line.a) {
-                    if !self_included.contains(&line.b)
+                if self_included.contains(&line.a)
+                    && !self_included.contains(&line.b)
                         && !shared.contains(&line.b)
                         && intersections == 0
                     {
                         self_included.remove(&line.a);
                         shared.insert(line.a);
                     }
-                }
             }
         }
-        let scount = self_included.iter().count();
-        let shared_count = shared.iter().count();
+        let scount = self_included.len();
+        let shared_count = shared.len();
 
         eprintln!("intersections: {}", real.len());
         eprintln!("projected: {}", projected.len());
@@ -736,9 +734,7 @@ impl Sub for Triangle {
             (1, _, 1, 0, 1) => {
                 polys.push(ConvexPolygon(vec![
                     real[0].point,
-                    self.points()
-                        .filter(|p| !self_included.contains(p) && !shared.contains(p))
-                        .next()
+                    self.points().find(|p| !self_included.contains(p) && !shared.contains(p))
                         .unwrap(),
                     *shared.iter().next().unwrap(),
                 ]));

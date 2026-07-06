@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::{console, CanvasRenderingContext2d};
+use web_sys::CanvasRenderingContext2d;
 
 use crate::geometry::*;
 
@@ -138,18 +137,18 @@ impl AppState {
     // TODO: would be nice to refactor this to return Point
     fn to_canvas(&self, p: Point) -> (F64, F64) {
         let new_point = self.zoom.reproject(&Point {
-            x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5).into(),
-            y: ((-p.y + 1.0) / 2.0 * 765.0).into(),
+            x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5),
+            y: ((-p.y + 1.0) / 2.0 * 765.0),
             z: 0.0.into(),
         });
         (new_point.x, new_point.y)
     }
 
     fn from_canvas(&self, p: &Point) -> Point {
-        let p = self.zoom.unproject(&p);
+        let p = self.zoom.unproject(p);
         Point {
-            x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0).into(),
-            y: (-((p.y * 2.0 / 765.0) - 1.0)).into(),
+            x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0),
+            y: (-((p.y * 2.0 / 765.0) - 1.0)),
             z: 0.0.into(),
         }
     }
@@ -181,7 +180,7 @@ impl AppState {
                 // if t.color == Color::Lime {
                 //     continue;
                 // }
-                let t = self.bb.reproject_triangle(&t);
+                let t = self.bb.reproject_triangle(t);
                 if self.selected_faces.contains(&i) {
                     self.draw_triangle(&t, Color::Selected);
                 } else {
@@ -215,7 +214,7 @@ impl AppState {
 
     pub fn find_edges(&mut self) {
         let mut edges: HashMap<Line, usize> = std::collections::HashMap::new();
-        for (i, face) in self.faces.iter().enumerate() {
+        for face in self.faces.iter() {
             if face.culled {
                 continue;
             }
@@ -224,7 +223,7 @@ impl AppState {
             // }
 
             for t in &face.hair {
-                let t = self.bb.reproject_triangle(&t);
+                let t = self.bb.reproject_triangle(t);
                 for edge in t.lines() {
                     match edges.get(&edge) {
                         Some(count) => {
@@ -283,7 +282,7 @@ impl AppState {
                 }
             }
         }
-        if !dirty && self.selected_faces.iter().count() > 0 {
+        if !dirty && !self.selected_faces.is_empty() {
             dirty = true;
             self.selected_faces.clear();
         }
@@ -352,7 +351,7 @@ impl AppState {
         }
         // let frame = 6;
 
-        let mut count = 0;
+        let _count = 0;
         self.faces.sort();
 
         // backface culling
@@ -403,7 +402,7 @@ impl AppState {
 
         let mut drawn: Vec<&mut Face> = vec![];
         // it's time to split hairs
-        for (i, face) in self.faces.iter_mut().enumerate() {
+        for face in self.faces.iter_mut() {
             if face.culled {
                 continue;
             }
@@ -413,7 +412,7 @@ impl AppState {
                     let mut haircut: Vec<Triangle> = vec![];
                     for t in face.hair.iter() {
                         let mut split = *t - *t2;
-                        if (split.len() == 0 || split.len() > 1) && !cut {
+                        if (split.is_empty() || split.len() > 1) && !cut {
                             cut = true;
                         }
                         haircut.append(&mut split);

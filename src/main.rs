@@ -1,6 +1,6 @@
 use crate::app::*;
 use wasm_bindgen::{prelude::Closure, JsCast};
-use web_sys::{console, window, CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
 use yew::prelude::*;
 
 mod app;
@@ -134,8 +134,8 @@ fn App() -> Html {
         let canvas_ref = canvas_ref.clone();
         let app = app.clone();
         let selection = selection.clone();
-        use_effect_with(canvas_ref, move |canvas_ref| {
-            let pointerup = Closure::<dyn Fn(Event)>::new(move |e: Event| {
+        use_effect_with(canvas_ref, move |_canvas_ref| {
+            let pointerup = Closure::<dyn Fn(Event)>::new(move |_e: Event| {
                 let mut selection = selection.borrow_mut();
                 match &*selection {
                     Some(s) if s.2 == i32::MAX || s.3 == i32::MAX => {
