@@ -410,6 +410,7 @@ impl AppState {
             if a_occluded && b_occluded && c_occluded {
                 face.culled = true;
             }
+            drawn.push(face);
         }
     }
     pub fn partial_culling(&mut self) {
