@@ -9,7 +9,7 @@ use crate::geometry::*;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FacePart {
     pub vertex: Point,
-    pub normal: Point,
+    pub normal: Option<Point>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -475,7 +475,10 @@ impl AppState {
                                     v[parts[0].parse::<usize>().unwrap() - 1],
                                     dt,
                                 )),
-                                normal: vn[parts[2].parse::<usize>().unwrap() - 1],
+                                normal: match parts.len() {
+                                    1 | 2 => None,
+                                    _ => Some(vn[parts[2].parse::<usize>().unwrap() - 1]),
+                                },
                             }
                         })
                         .collect::<Vec<_>>();

@@ -34,7 +34,7 @@ fn App(props: &Props) -> Html {
     // let selecting = use_mut_ref(|| false);
     let selection = use_mut_ref::<Option<(i32, i32, i32, i32)>, _>(|| None);
     let zoomed_in = use_state(|| false);
-    let partial_culling = use_state(|| true);
+    let partial_culling = use_state(|| !matches!(routes, AppView::NoClip));
     let app = use_mut_ref(AppState::new);
 
     {

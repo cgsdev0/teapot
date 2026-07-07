@@ -473,11 +473,11 @@ impl Sub for Triangle {
                 let x = intersections[0];
                 let y = intersections[1];
                 let poly_b = ConvexPolygon(vec![other_point, x, y]);
-                let z = real
-                    .iter()
-                    .find(|i| i.point != x && i.point != y)
-                    .unwrap()
-                    .point;
+                let Some(z) = real.iter().find(|i| i.point != x && i.point != y) else {
+                    // this used to panic; since we can't unwind, we do this shid instead
+                    return vec![self];
+                };
+                let z = z.point;
 
                 poly_a.0.push(z);
                 polys.push(poly_a);
@@ -514,16 +514,17 @@ impl Sub for Triangle {
                     tri_real.point,
                     tri_proj.point,
                 ]));
+                let Some(idk) = real.iter().find(|i| i.point != tri_real.point) else {
+                    // this used to panic; since we can't unwind, we do this shid instead
+                    return vec![self];
+                };
                 polys.push(ConvexPolygon(vec![
                     concave_cutting_point,
                     tri_cutting_point,
                     tri_proj.point,
                     double_projected_line.other_point(&new_triangle_vertex),
                     double_intersected_line.other_point(&new_triangle_vertex),
-                    real.iter()
-                        .find(|i| i.point != tri_real.point)
-                        .unwrap()
-                        .point,
+                    idk.point,
                 ]));
             }
             (4, _, 0, 0, _) => {
@@ -739,6 +740,7 @@ impl Sub for Triangle {
             }
             _ => {
                 eprintln!("it matched nobody");
+                return vec![self];
                 // cursed_subtraction_debug(&self, &other, &i, false);
             }
         };
