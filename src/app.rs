@@ -17,7 +17,8 @@ pub struct Face {
     pub eyes: FacePart,
     pub noes: FacePart,
     pub ears: FacePart,
-    pub hair: Vec<Triangle>,
+    pub hair: Triangle,
+    pub haircut: Vec<Triangle>,
     pub culled: bool,
 }
 
@@ -256,7 +257,7 @@ impl AppState {
             //     break;
             // }
 
-            for t in &face.hair {
+            for t in &face.haircut {
                 // if t.color == Color::Lime {
                 //     continue;
                 // }
@@ -302,7 +303,7 @@ impl AppState {
             //     break;
             // }
 
-            for t in &face.hair {
+            for t in &face.haircut {
                 let t = self.bb.reproject_triangle(t);
                 for edge in t.lines() {
                     match edges.get(&edge) {
@@ -351,7 +352,7 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            for t in face.hair.iter() {
+            for t in face.haircut.iter() {
                 if t.contains(&p) {
                     if !dirty {
                         dirty = true;
@@ -392,58 +393,52 @@ impl AppState {
             // XXX: this is potentially teapot specific
             // this culls triangles whose points are all occluded
             // we might not need it!
-            face.hair = face
-                .hair
-                .clone()
-                .into_iter()
-                .filter(|t| {
-                    let mut a = true;
-                    let mut b = true;
-                    let mut c = true;
-                    for f2 in drawn.iter() {
-                        for t2 in f2.hair.iter() {
-                            if t2.contains(&t.a) {
-                                a = false;
-                            }
-                            if t2.contains(&t.b) {
-                                b = false;
-                            }
-                            if t2.contains(&t.c) {
-                                c = false;
-                            }
-                        }
-                    }
-                    a || b || c
-                })
-                .collect();
-            drawn.push(face);
+            let mut a_occluded = false;
+            let mut b_occluded = false;
+            let mut c_occluded = false;
+            for f2 in drawn.iter() {
+                if f2.hair.contains(&face.hair.a) {
+                    a_occluded = true;
+                }
+                if f2.hair.contains(&face.hair.b) {
+                    b_occluded = true;
+                }
+                if f2.hair.contains(&face.hair.c) {
+                    c_occluded = true;
+                }
+            }
+            if a_occluded && b_occluded && c_occluded {
+                face.culled = true;
+            }
         }
     }
     pub fn partial_culling(&mut self) {
         let mut drawn: Vec<&mut Face> = vec![];
         // it's time to split hairs
-        for (i, face) in self.faces.iter_mut().enumerate() {
+        'cut: for (i, face) in self.faces.iter_mut().enumerate() {
             if face.culled {
                 continue;
             }
             if let AppView::Painter { face } = self.view {
-                if i > (face as usize) {
+                if i > face {
                     break;
                 }
             }
             let mut cut = false;
             for f2 in drawn.iter() {
-                for t2 in f2.hair.iter() {
-                    let mut haircut: Vec<Triangle> = vec![];
-                    for t in face.hair.iter() {
-                        let mut split = *t - *t2;
-                        if (split.is_empty() || split.len() > 1) && !cut {
-                            cut = true;
-                        }
-                        haircut.append(&mut split);
+                let mut haircut: Vec<Triangle> = vec![];
+                for t in face.haircut.iter() {
+                    let mut split = *t - f2.hair;
+                    if (split.is_empty() || split.len() > 1) && !cut {
+                        cut = true;
                     }
-                    face.hair = haircut;
+                    haircut.append(&mut split);
                 }
+                if haircut.is_empty() {
+                    face.culled = true;
+                    continue 'cut;
+                }
+                face.haircut = haircut;
             }
             drawn.push(face);
         }
@@ -482,20 +477,22 @@ impl AppState {
                             }
                         })
                         .collect::<Vec<_>>();
+                    let tri = Triangle {
+                        a: project(parts[0].vertex),
+                        b: project(parts[1].vertex),
+                        c: project(parts[2].vertex),
+                    };
                     let face = Face {
                         eyes: parts[0],
                         noes: parts[1],
                         ears: parts[2],
-                        hair: vec![Triangle {
-                            a: project(parts[0].vertex),
-                            b: project(parts[1].vertex),
-                            c: project(parts[2].vertex),
-                        }],
+                        hair: tri,
+                        haircut: vec![tri],
                         culled: false,
                     };
-                    self.bb.expand(&face.hair[0].a);
-                    self.bb.expand(&face.hair[0].b);
-                    self.bb.expand(&face.hair[0].c);
+                    self.bb.expand(&face.hair.a);
+                    self.bb.expand(&face.hair.b);
+                    self.bb.expand(&face.hair.c);
                     self.faces.push(face);
                 }
                 "v" => {
