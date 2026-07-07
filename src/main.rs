@@ -164,7 +164,7 @@ fn App(props: &Props) -> Html {
                         // insufficient drag distance; this is just a click
                         let app = app.borrow();
                         console::log_1(&format!("Clicked: {:?}", app.selected_faces).into());
-                        let face = app.selected_faces.iter().next().copied();
+                        let face = app.selected_faces.iter().last().copied();
                         if let Some(face) = face {
                             navigator.push(&AppView::Painter { face: face });
                         }
