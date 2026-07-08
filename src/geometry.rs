@@ -1,4 +1,5 @@
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use std::array::IntoIter;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -218,13 +219,13 @@ impl ConvexPolygon {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum BBMode {
     FromCenter,
     FromTopLeft,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct BoundingBox {
     pub min: Point,
     pub max: Point,
@@ -753,7 +754,7 @@ impl Sub for Triangle {
     }
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Point {
     pub x: F64,
     pub y: F64,

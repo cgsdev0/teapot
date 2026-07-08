@@ -7,6 +7,7 @@ use std::str::FromStr;
 use raylib::prelude::RaylibDrawHandle;
 
 use crate::geometry::*;
+use crate::navigator::*;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FacePart {
@@ -71,45 +72,6 @@ impl Face {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum SliceThing {
-    OneFace(usize),
-    TwoFace(usize, usize),
-}
-
-impl FromStr for SliceThing {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts = s.split(':').collect::<Vec<_>>();
-        match parts.len() {
-            1 => Ok(SliceThing::OneFace(s.parse::<usize>().map_err(|_| ())?)),
-            2 => Ok(SliceThing::TwoFace(
-                parts[0].parse::<usize>().map_err(|_| ())?,
-                parts[1].parse::<usize>().map_err(|_| ())?,
-            )),
-            _ => Err(()),
-        }
-    }
-}
-
-impl std::fmt::Display for SliceThing {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::OneFace(id) => write!(f, "{}", id),
-            Self::TwoFace(id1, id2) => write!(f, "{}:{}", id1, id2),
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
-pub enum AppView {
-    Main,
-    NoClip,
-    Painter { face: usize },
-    SliceView { face: SliceThing, idx: usize },
-    NotFound,
-}
-
 pub struct DebugView {
     pub tri: Triangle,
     pub haircut: Vec<Triangle>,
@@ -122,7 +84,7 @@ pub struct AppState {
     pub zoom: BoundingBox,
     pub edges: Vec<Line>,
     pub selected_faces: HashSet<usize>,
-    pub view: AppView,
+    pub nav: Navigator,
     pub debug_view: Option<DebugView>,
     pub selection: Option<(Vector2, Vector2)>,
 }
@@ -206,8 +168,8 @@ impl AppState {
             bb: BoundingBox::new(),
             zoom: BoundingBox::new(),
             edges: vec![],
+            nav: Navigator::new(),
             selected_faces: std::collections::HashSet::new(),
-            view: AppView::Main,
             debug_view: None,
             selection: None,
         };
@@ -216,7 +178,6 @@ impl AppState {
     }
     pub fn update(&mut self, rl: &mut RaylibHandle) {
         let pos = rl.get_mouse_position();
-        self.move_pointer(pos.x, pos.y);
         if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             self.selection = Some((pos, pos));
         }
@@ -245,6 +206,8 @@ impl AppState {
         }
         if let Some(selection) = &mut self.selection {
             selection.1 = rl.get_mouse_position();
+        } else {
+            self.move_pointer(pos.x, pos.y);
         }
     }
 
@@ -335,7 +298,8 @@ impl AppState {
 
     pub fn render(&self, d: &mut RaylibDrawHandle) {
         self.clear(d);
-        match self.view {
+        let state = self.nav.current();
+        match state.route {
             // AppView::SliceView { .. } => self.render_debug(d),
             _ => self.render_standard(d),
         };
@@ -531,8 +495,9 @@ impl AppState {
         }
     }
     pub fn partial_culling(&mut self) {
+        let state = self.nav.current();
         let mut drawn: Vec<&mut Face> = vec![];
-        let (view_face, cutter_face, view_cut_idx) = match self.view {
+        let (view_face, cutter_face, view_cut_idx) = match state.route {
             AppView::SliceView { face, idx } => match face {
                 SliceThing::OneFace(fid) => (fid, fid, idx),
                 SliceThing::TwoFace(f1, f2) => (f1, f2, idx),
@@ -545,7 +510,7 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            if let AppView::Painter { face } = self.view {
+            if let AppView::Painter { face } = state.route {
                 // TODO: check face IDs?
                 if i > face {
                     // console::log_1(&format!("breaking cuz {} > {}", i, face).into());
@@ -585,7 +550,7 @@ impl AppState {
             }
             drawn.push(face);
         }
-        if let AppView::Painter { .. } = self.view {
+        if let AppView::Painter { .. } = self.nav.current().route {
             // if debug.is_some() {
             self.faces = drawn.into_iter().map(|d| d.clone()).collect();
         }
@@ -665,13 +630,8 @@ impl AppState {
         }
 
         self.backface_culling();
-        // self.reasonable_culling();
-        match self.view {
-            AppView::NoClip => {}
-            _ => {
-                self.partial_culling();
-            }
-        };
+        self.reasonable_culling();
+        self.partial_culling();
 
         self.bb.make_square();
         self.find_edges();
