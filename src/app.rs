@@ -14,6 +14,7 @@ pub struct FacePart {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Face {
+    pub id: usize,
     pub eyes: FacePart,
     pub noes: FacePart,
     pub ears: FacePart,
@@ -83,6 +84,12 @@ pub enum AppView {
     NotFound,
 }
 
+pub struct DebugView {
+    pub tri: Triangle,
+    pub haircut: Vec<Triangle>,
+    pub cutter: Triangle,
+}
+
 pub struct AppState {
     pub faces: Vec<Face>,
     pub ctx: Option<CanvasRenderingContext2d>,
@@ -91,6 +98,7 @@ pub struct AppState {
     pub edges: Vec<Line>,
     pub selected_faces: HashSet<usize>,
     pub view: AppView,
+    pub debug_view: Option<DebugView>,
 }
 
 #[allow(dead_code)]
@@ -134,6 +142,7 @@ enum Color {
     Rhs,
     Difference,
     Selected,
+    Cut,
 }
 
 const TEAPOT: &str = include_str!("../teapot.obj");
@@ -148,6 +157,7 @@ impl AppState {
             edges: vec![],
             selected_faces: std::collections::HashSet::new(),
             view: AppView::Main,
+            debug_view: None,
         }
     }
 
@@ -190,6 +200,10 @@ impl AppState {
             Color::Selected => {
                 ctx.set_fill_style_str("#00ff0030");
                 ctx.set_stroke_style_str("lime");
+            }
+            Color::Cut => {
+                ctx.set_fill_style_str("#00aaaa30");
+                ctx.set_stroke_style_str("#00aaaa");
             }
         }
         ctx.begin_path();
@@ -248,8 +262,29 @@ impl AppState {
     }
 
     pub fn render(&self) {
+        match self.view {
+            AppView::SliceView { .. } => self.render_debug(),
+            _ => self.render_standard()
+        }
+    }
+
+    pub fn render_debug(&self) {
         self.clear();
-        for (i, face) in self.faces.iter().enumerate() {
+        let Some(debug_view) = &self.debug_view else {
+            self.render_standard();
+            return;
+        };
+        let DebugView { tri, haircut, cutter } = debug_view;
+        self.draw_triangle(&self.bb.reproject_triangle(tri), Color::Lhs);
+        self.draw_triangle(&self.bb.reproject_triangle(cutter), Color::Rhs);
+        for cut in haircut {
+            self.draw_triangle(&self.bb.reproject_triangle(cut), Color::Difference);
+        }
+    }
+
+    pub fn render_standard(&self) {
+        self.clear();
+        for face in self.faces.iter() {
             if face.culled {
                 continue;
             }
@@ -262,10 +297,13 @@ impl AppState {
                 //     continue;
                 // }
                 let t = self.bb.reproject_triangle(t);
-                if self.selected_faces.contains(&i) {
+                if self.selected_faces.contains(&face.id) {
                     self.draw_triangle(&t, Color::Selected);
                 } else {
-                    self.draw_triangle(&t, Color::Lime);
+                    self.draw_triangle(&t, match face.haircut.len() {
+                        1 => Color::Lime,
+                        _ => Color::Cut
+                    });
                 }
             }
         }
@@ -358,7 +396,7 @@ impl AppState {
                         dirty = true;
                         self.selected_faces.clear();
                     }
-                    self.selected_faces.insert(i);
+                    self.selected_faces.insert(face.id);
                     break;
                 }
             }
@@ -415,29 +453,44 @@ impl AppState {
     }
     pub fn partial_culling(&mut self) {
         let mut drawn: Vec<&mut Face> = vec![];
+        let (view_face, view_cut_idx) = match self.view {
+            AppView::SliceView { face, idx } => (face, idx),
+            _ => (0, 0)
+        };
         // it's time to split hairs
         'cut: for (i, face) in self.faces.iter_mut().enumerate() {
             if face.culled {
                 continue;
             }
             if let AppView::Painter { face } = self.view {
+                // TODO: check face IDs?
                 if i > face {
+                    console::log_1(&format!("breaking cuz {} > {}", i, face).into());
                     break;
                 }
             }
-            let mut cut = false;
+            let mut cut_idx = 0;
             for f2 in drawn.iter() {
                 let mut haircut: Vec<Triangle> = vec![];
                 for t in face.haircut.iter() {
                     let mut split = *t - f2.hair;
-                    if (split.is_empty() || split.len() > 1) && !cut {
-                        cut = true;
+                    if split.len() > 1 || (split.len() == 1 && split[0] != *t) {
+                        cut_idx += 1;
+                        console::log_1(&format!("face id: {}, view: {}, cut: {}, view_cut: {}", face.id, view_face, cut_idx, view_cut_idx).into());
+                        if face.id == view_face && cut_idx == view_cut_idx {
+                            self.debug_view = Some(DebugView {
+                                tri: *t,
+                                haircut: split,
+                                cutter: f2.hair
+                            });
+                            return;
+                        }
                     }
                     haircut.append(&mut split);
-                }
-                if haircut.is_empty() {
-                    face.culled = true;
-                    continue 'cut;
+                    if haircut.is_empty() {
+                        face.culled = true;
+                        continue 'cut;
+                    }
                 }
                 face.haircut = haircut;
             }
@@ -454,6 +507,7 @@ impl AppState {
         self.clear();
         self.edges.clear();
         self.faces.clear();
+        self.debug_view = None;
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
         let dt: F64 = (std::f64::consts::PI / 2.0).into();
@@ -484,6 +538,7 @@ impl AppState {
                         c: project(parts[2].vertex),
                     };
                     let face = Face {
+                        id: 0,
                         eyes: parts[0],
                         noes: parts[1],
                         ears: parts[2],
@@ -517,6 +572,9 @@ impl AppState {
 
         let _count = 0;
         self.faces.sort();
+        for (z, face) in self.faces.iter_mut().enumerate() {
+            face.id = z;
+        }
 
         self.backface_culling();
         self.reasonable_culling();

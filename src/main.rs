@@ -166,7 +166,19 @@ fn App(props: &Props) -> Html {
                         console::log_1(&format!("Clicked: {:?}", app.selected_faces).into());
                         let face = app.selected_faces.iter().last().copied();
                         if let Some(face) = face {
-                            navigator.push(&AppView::Painter { face: face });
+                            match app.view {
+                                AppView::Painter { .. } => {
+                                    if app.faces.iter().find(|f| f.id == face).unwrap().haircut.len() > 1 {
+                                        console::log_1(&"pushing slice view".into());
+                                        navigator.push(&AppView::SliceView { face, idx: 1 });
+                                    }
+                                },
+                                AppView::Main | AppView::NoClip => {
+                                    console::log_1(&"pushing painter view".into());
+                                    navigator.push(&AppView::Painter { face: face });
+                                }
+                                _ => (),
+                            };
                         }
                         *selection = None;
                     }
@@ -241,6 +253,26 @@ fn App(props: &Props) -> Html {
         })
     };
 
+    let prev_cut = {
+        let navigator = navigator.clone();
+        Callback::from(move |_| {
+            if let AppView::SliceView { face, idx } = routes {
+                if idx > 1 {
+                    navigator.push(&AppView::SliceView { face, idx: idx - 1 })
+                }
+            }
+        })
+    };
+
+    let next_cut = {
+        let navigator = navigator.clone();
+        Callback::from(move |_| {
+            if let AppView::SliceView { face, idx } = routes {
+                navigator.push(&AppView::SliceView { face, idx: idx + 1 })
+            }
+        })
+    };
+
     html! {
         <div>
             <canvas ref={canvas_ref} width={1030} height={765}></canvas>
@@ -251,6 +283,14 @@ fn App(props: &Props) -> Html {
             }
             {
             match routes{
+                AppView::SliceView { .. } => {
+                    html! {
+                        <div>
+                            <button onclick={prev_cut}>{"Prev Cut"}</button>
+                            <button onclick={next_cut}>{"Next Cut"}</button>
+                        </div>
+                    }
+                },
                 AppView::Main | AppView::NoClip => {
                 html! {
                     <label>
