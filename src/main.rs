@@ -12,6 +12,7 @@ fn main() {
     app.restart();
 
     while !rl.window_should_close() {
+        app.update(&mut rl);
         let mut d = rl.begin_drawing(&thread);
         app.render(&mut d);
     }

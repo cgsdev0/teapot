@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 ordered-float = "5.3.0"
 raylib = "6.0.0"
+serde_json = "1.0.150"

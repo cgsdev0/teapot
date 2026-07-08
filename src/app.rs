@@ -1,5 +1,4 @@
 use crate::geometry::BoundingBox;
-use raylib::ffi::CSSPalette;
 use raylib::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -125,6 +124,7 @@ pub struct AppState {
     pub selected_faces: HashSet<usize>,
     pub view: AppView,
     pub debug_view: Option<DebugView>,
+    pub selection: Option<(Vector2, Vector2)>,
 }
 
 #[allow(dead_code)]
@@ -163,13 +163,38 @@ fn rotate(p: Point, angle: F64) -> Point {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum ColorType {
-    Lime,
+    Primary,
     Lhs,
     Rhs,
     Difference,
     Selected,
     Cut,
     Dark,
+}
+
+impl ColorType {
+    pub fn fill(&self) -> Option<Color> {
+        match self {
+            ColorType::Primary => Some(Color::WHITE.alpha(0.25)),
+            ColorType::Lhs => Some(Color::WHITE.alpha(0.25)),
+            ColorType::Rhs => Some(Color::RED.alpha(0.25)),
+            ColorType::Difference => None,
+            ColorType::Selected => Some(Color::LIME.alpha(0.25)),
+            ColorType::Cut => Some(Color::from_hex("#00aaaa").unwrap().alpha(0.25)),
+            ColorType::Dark => None,
+        }
+    }
+    pub fn stroke(&self) -> Option<Color> {
+        match self {
+            ColorType::Primary => None,
+            ColorType::Lhs => Some(Color::from_hex("#666").unwrap()),
+            ColorType::Rhs => Some(Color::RED),
+            ColorType::Difference => Some(Color::BLUE),
+            ColorType::Selected => Some(Color::LIME),
+            ColorType::Cut => Some(Color::from_hex("#00aaaa").unwrap()),
+            ColorType::Dark => Some(Color::WHITE.alpha(0.1)),
+        }
+    }
 }
 
 const TEAPOT: &str = include_str!("../teapot.obj");
@@ -184,9 +209,43 @@ impl AppState {
             selected_faces: std::collections::HashSet::new(),
             view: AppView::Main,
             debug_view: None,
+            selection: None,
         };
         app.reset_zoom();
         app
+    }
+    pub fn update(&mut self, rl: &mut RaylibHandle) {
+        let pos = rl.get_mouse_position();
+        self.move_pointer(pos.x, pos.y);
+        if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            self.selection = Some((pos, pos));
+        }
+        if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
+            self.reset_zoom();
+        }
+        if rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+            if let Some(selection) = self.selection {
+                let delta = selection.1 - selection.0;
+                let dx = delta.x.abs();
+                let dy = delta.y.abs();
+                if dx < 5.0 && dy < 5.0 {
+                    // TODO: this is a click
+                    self.selection = None;
+                    return;
+                }
+                // apply selection
+                self.zoom_to(
+                    selection.0.x.into(),
+                    selection.0.y.into(),
+                    selection.1.x.into(),
+                    selection.1.y.into(),
+                );
+                self.selection = None;
+            }
+        }
+        if let Some(selection) = &mut self.selection {
+            selection.1 = rl.get_mouse_position();
+        }
     }
 
     pub fn zoom_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
@@ -212,14 +271,22 @@ impl AppState {
         let a = self.to_canvas(t.a);
         let b = self.to_canvas(t.b);
         let c = self.to_canvas(t.c);
-        let ab = (a - b);
-        let ac = (a - c);
+        let ab = a - b;
+        let ac = a - c;
         let cross = ab.x * ac.y - ab.y * ac.x;
-        let fill = Color::RED.alpha(0.25);
-        match cross.signum() {
-            -1.0 => d.draw_triangle(a, b, c, fill),
-            _ => d.draw_triangle(a, c, b, fill),
-        };
+        // we need to sort to clockwise
+        if let Some(fill) = color.fill() {
+            match cross.signum() {
+                -1.0 => d.draw_triangle(a, b, c, fill),
+                _ => d.draw_triangle(a, c, b, fill),
+            };
+        }
+        if let Some(stroke) = color.stroke() {
+            match cross.signum() {
+                -1.0 => d.draw_triangle_lines(a, b, c, stroke),
+                _ => d.draw_triangle_lines(a, c, b, stroke),
+            };
+        }
     }
 
     // fn draw_line(&self, p1: Point, p2: Point) {
@@ -271,6 +338,17 @@ impl AppState {
         match self.view {
             // AppView::SliceView { .. } => self.render_debug(d),
             _ => self.render_standard(d),
+        };
+        if let Some(selection) = self.selection {
+            let pos = selection.0;
+            let size = selection.1 - selection.0;
+            d.draw_rectangle_lines(
+                pos.x as i32,
+                pos.y as i32,
+                size.x as i32,
+                size.y as i32,
+                Color::RED,
+            );
         }
     }
 
@@ -309,18 +387,18 @@ impl AppState {
             // }
 
             for t in &face.haircut {
-                // if t.color == ColorType::Lime {
+                // if t.color == ColorType::Primary {
                 //     continue;
                 // }
                 if self.selected_faces.contains(&face.id) {
-                    d.draw_triangle(t.a, t.b, t.c, Color::RED);
+                    self.draw_triangle(d, t, ColorType::Selected);
                 } else {
-                    self.draw_triangle(d, &t, ColorType::Lime);
+                    self.draw_triangle(d, t, ColorType::Primary);
 
                     // self.draw_triangle(
                     //     &t,
                     //     match face.haircut.len() {
-                    //         1 => ColorType::Lime,
+                    //         1 => ColorType::Primary,
                     //         _ => ColorType::Cut,
                     //     },
                     // );
@@ -382,38 +460,34 @@ impl AppState {
         });
     }
 
-    // pub fn move_pointer(&mut self, x: i32, y: i32) {
-    //     let p = Point {
-    //         x: x.into(),
-    //         y: y.into(),
-    //         z: 0.0.into(),
-    //     };
-    //     let p = self.from_canvas(&p);
-    //     let p = self.bb.unproject(&p);
-    //     let mut dirty = false;
-    //     for (i, face) in self.faces.iter().enumerate() {
-    //         if face.culled {
-    //             continue;
-    //         }
-    //         for t in face.haircut.iter() {
-    //             if t.contains(&p) {
-    //                 if !dirty {
-    //                     dirty = true;
-    //                     self.selected_faces.clear();
-    //                 }
-    //                 self.selected_faces.insert(face.id);
-    //                 break;
-    //             }
-    //         }
-    //     }
-    //     if !dirty && !self.selected_faces.is_empty() {
-    //         dirty = true;
-    //         self.selected_faces.clear();
-    //     }
-    //     if dirty {
-    //         self.render();
-    //     }
-    // }
+    pub fn move_pointer(&mut self, x: f32, y: f32) {
+        let p = Point {
+            x: (x as f64).into(),
+            y: (y as f64).into(),
+            z: 0.0.into(),
+        };
+        let p = self.from_canvas(&p);
+        let p = self.bb.unproject(&p);
+        let mut dirty = false;
+        for (i, face) in self.faces.iter().enumerate() {
+            if face.culled {
+                continue;
+            }
+            for t in face.haircut.iter() {
+                if t.contains(&p) {
+                    if !dirty {
+                        dirty = true;
+                        self.selected_faces.clear();
+                    }
+                    self.selected_faces.insert(face.id);
+                    break;
+                }
+            }
+        }
+        if !dirty && !self.selected_faces.is_empty() {
+            self.selected_faces.clear();
+        }
+    }
 
     pub fn backface_culling(&mut self) {
         for face in self.faces.iter_mut() {
