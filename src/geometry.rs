@@ -3,7 +3,6 @@ use std::array::IntoIter;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
-use web_sys::console;
 
 pub type F64 = OrderedFloat<f64>;
 
@@ -740,7 +739,7 @@ impl Sub for Triangle {
                 ]));
             }
             _ => {
-                console::log_1(&"it matched nobody".into());
+                // console::log_1(&"it matched nobody".into());
                 return vec![self];
                 // cursed_subtraction_debug(&self, &other, &i, false);
             }
@@ -759,6 +758,15 @@ pub struct Point {
     pub x: F64,
     pub y: F64,
     pub z: F64,
+}
+
+impl From<Point> for raylib::ffi::Vector2 {
+    fn from(item: Point) -> Self {
+        raylib::ffi::Vector2 {
+            x: item.x.into_inner() as f32,
+            y: item.y.into_inner() as f32,
+        }
+    }
 }
 
 impl std::fmt::Debug for Point {
