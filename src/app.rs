@@ -81,10 +81,10 @@ impl FromStr for SliceThing {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts = s.split(':').collect::<Vec<_>>();
         match parts.len() {
-            1 => Ok(SliceThing::OneFace(s.parse::<usize>().map_err(|_|())?)),
+            1 => Ok(SliceThing::OneFace(s.parse::<usize>().map_err(|_| ())?)),
             2 => Ok(SliceThing::TwoFace(
-                parts[0].parse::<usize>().map_err(|_|())?,
-                parts[1].parse::<usize>().map_err(|_|())?
+                parts[0].parse::<usize>().map_err(|_| ())?,
+                parts[1].parse::<usize>().map_err(|_| ())?,
             )),
             _ => Err(()),
         }
@@ -109,10 +109,7 @@ pub enum AppView {
     #[at("/painter/:face")]
     Painter { face: usize },
     #[at("/slice/:face/:idx")]
-    SliceView {
-        face: SliceThing,
-        idx: usize
-    },
+    SliceView { face: SliceThing, idx: usize },
     #[not_found]
     #[at("/404")]
     NotFound,
@@ -180,7 +177,7 @@ enum Color {
     Dark,
 }
 
-const TEAPOT: &str = include_str!("../teapot.obj");
+const TEAPOT: &str = include_str!("../utah-beetle-only.obj");
 
 impl AppState {
     pub fn new() -> Self {
@@ -241,11 +238,13 @@ impl AppState {
             Color::Cut => {
                 ctx.set_fill_style_str("#00aaaa30");
                 ctx.set_stroke_style_str("#00aaaa");
-            },
+                ctx.set_fill_style_str("#ffffff30");
+                ctx.set_stroke_style_str("transparent");
+            }
             Color::Dark => {
                 ctx.set_fill_style_str("transparent");
                 ctx.set_stroke_style_str("#ffffff10");
-            },
+            }
         }
         ctx.begin_path();
         let (x, y) = self.to_canvas(t.a);
@@ -305,7 +304,7 @@ impl AppState {
     pub fn render(&self) {
         match self.view {
             AppView::SliceView { .. } => self.render_debug(),
-            _ => self.render_standard()
+            _ => self.render_standard(),
         }
     }
 
@@ -323,7 +322,11 @@ impl AppState {
                 self.draw_triangle(&t, Color::Dark);
             }
         }
-        let DebugView { tri, haircut, cutter } = debug_view;
+        let DebugView {
+            tri,
+            haircut,
+            cutter,
+        } = debug_view;
         self.draw_triangle(&tri, Color::Lhs);
         self.draw_triangle(&cutter, Color::Rhs);
         for cut in haircut {
@@ -348,10 +351,13 @@ impl AppState {
                 if self.selected_faces.contains(&face.id) {
                     self.draw_triangle(&t, Color::Selected);
                 } else {
-                    self.draw_triangle(&t, match face.haircut.len() {
-                        1 => Color::Lime,
-                        _ => Color::Cut
-                    });
+                    self.draw_triangle(
+                        &t,
+                        match face.haircut.len() {
+                            1 => Color::Lime,
+                            _ => Color::Cut,
+                        },
+                    );
                 }
             }
         }
@@ -506,7 +512,7 @@ impl AppState {
                 SliceThing::OneFace(fid) => (fid, fid, idx),
                 SliceThing::TwoFace(f1, f2) => (f1, f2, idx),
             },
-            _ => (0, 0, 0)
+            _ => (0, 0, 0),
         };
         let mut cut_idx = 0;
         // it's time to split hairs
@@ -525,7 +531,12 @@ impl AppState {
                 let mut haircut: Vec<Triangle> = vec![];
                 for t in face.haircut.iter() {
                     let mut split = *t - f2.hair;
-                    if split.len() > 1 || (split.len() == 1 && split[0] != *t) || (cutter_face != view_face && f2.id == cutter_face && face.id == view_face) {
+                    if split.len() > 1
+                        || (split.len() == 1 && split[0] != *t)
+                        || (cutter_face != view_face
+                            && f2.id == cutter_face
+                            && face.id == view_face)
+                    {
                         // console::log_1(&format!("face id: {}, view: {}, cut: {}, view_cut: {}", face.id, view_face, cut_idx, view_cut_idx).into());
                         if face.id == view_face || f2.id == cutter_face {
                             cut_idx += 1;
@@ -533,7 +544,7 @@ impl AppState {
                                 self.debug_view = Some(DebugView {
                                     tri: *t,
                                     haircut: split,
-                                    cutter: f2.hair
+                                    cutter: f2.hair,
                                 });
                                 return;
                             }
@@ -630,7 +641,7 @@ impl AppState {
         }
 
         self.backface_culling();
-        self.reasonable_culling();
+        // self.reasonable_culling();
         match self.view {
             AppView::NoClip => {}
             _ => {

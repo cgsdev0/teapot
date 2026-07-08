@@ -413,11 +413,11 @@ impl Sub for Triangle {
         let scount = self_included.len();
         let shared_count = shared.len();
 
-        console::log_1(&format!("intersections: {}", real.len()).into());
-        console::log_1(&format!("projected: {}", projected.len()).into());
-        console::log_1(&format!("scount: {}", scount).into());
-        console::log_1(&format!("ocount: {}", ocount).into());
-        console::log_1(&format!("shared: {}\n", shared_count).into());
+        // console::log_1(&format!("intersections: {}", real.len()).into());
+        // console::log_1(&format!("projected: {}", projected.len()).into());
+        // console::log_1(&format!("scount: {}", scount).into());
+        // console::log_1(&format!("ocount: {}", ocount).into());
+        // console::log_1(&format!("shared: {}\n", shared_count).into());
         // JAGI
         match (real.len(), projected.len(), scount, ocount, shared_count) {
             (_, _, _, _, 3) => {
