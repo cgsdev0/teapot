@@ -22,6 +22,11 @@
     {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
+          libGL
+          glfw3
+          emscripten
+          pkg-config
+          cmake
           rustToolchain  
           wabt
           llvmPackages.bintools
