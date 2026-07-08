@@ -487,10 +487,10 @@ impl AppState {
                         }
                     }
                     haircut.append(&mut split);
-                    if haircut.is_empty() {
-                        face.culled = true;
-                        continue 'cut;
-                    }
+                }
+                if haircut.is_empty() {
+                    face.culled = true;
+                    continue 'cut;
                 }
                 face.haircut = haircut;
             }
