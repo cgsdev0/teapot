@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
 use web_sys::{console, CanvasRenderingContext2d};
 use yew_router::Routable;
@@ -69,6 +70,36 @@ impl Face {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum SliceThing {
+    OneFace(usize),
+    TwoFace(usize, usize),
+}
+
+impl FromStr for SliceThing {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts = s.split(':').collect::<Vec<_>>();
+        match parts.len() {
+            1 => Ok(SliceThing::OneFace(s.parse::<usize>().map_err(|_|())?)),
+            2 => Ok(SliceThing::TwoFace(
+                parts[0].parse::<usize>().map_err(|_|())?,
+                parts[1].parse::<usize>().map_err(|_|())?
+            )),
+            _ => Err(()),
+        }
+    }
+}
+
+impl std::fmt::Display for SliceThing {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::OneFace(id) => write!(f, "{}", id),
+            Self::TwoFace(id1, id2) => write!(f, "{}:{}", id1, id2),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Routable)]
 pub enum AppView {
     #[at("/")]
@@ -78,7 +109,10 @@ pub enum AppView {
     #[at("/painter/:face")]
     Painter { face: usize },
     #[at("/slice/:face/:idx")]
-    SliceView { face: usize, idx: usize },
+    SliceView {
+        face: SliceThing,
+        idx: usize
+    },
     #[not_found]
     #[at("/404")]
     NotFound,
@@ -143,6 +177,7 @@ enum Color {
     Difference,
     Selected,
     Cut,
+    Dark,
 }
 
 const TEAPOT: &str = include_str!("../teapot.obj");
@@ -181,12 +216,14 @@ impl AppState {
 
     fn draw_triangle(&self, t: &Triangle, color: Color) {
         let ctx = self.ctx.as_ref().unwrap();
+        let t = self.bb.reproject_triangle(t);
         match color {
             Color::Lime => {
                 ctx.set_fill_style_str("#ffffff30");
                 ctx.set_stroke_style_str("transparent");
             }
             Color::Lhs => {
+                ctx.set_fill_style_str("#ffffff30");
                 ctx.set_stroke_style_str("#666");
             }
             Color::Rhs => {
@@ -204,7 +241,11 @@ impl AppState {
             Color::Cut => {
                 ctx.set_fill_style_str("#00aaaa30");
                 ctx.set_stroke_style_str("#00aaaa");
-            }
+            },
+            Color::Dark => {
+                ctx.set_fill_style_str("transparent");
+                ctx.set_stroke_style_str("#ffffff10");
+            },
         }
         ctx.begin_path();
         let (x, y) = self.to_canvas(t.a);
@@ -274,11 +315,19 @@ impl AppState {
             self.render_standard();
             return;
         };
+        for face in self.faces.iter() {
+            if face.culled {
+                continue;
+            }
+            for t in &face.haircut {
+                self.draw_triangle(&t, Color::Dark);
+            }
+        }
         let DebugView { tri, haircut, cutter } = debug_view;
-        self.draw_triangle(&self.bb.reproject_triangle(tri), Color::Lhs);
-        self.draw_triangle(&self.bb.reproject_triangle(cutter), Color::Rhs);
+        self.draw_triangle(&tri, Color::Lhs);
+        self.draw_triangle(&cutter, Color::Rhs);
         for cut in haircut {
-            self.draw_triangle(&self.bb.reproject_triangle(cut), Color::Difference);
+            self.draw_triangle(&cut, Color::Difference);
         }
     }
 
@@ -296,7 +345,6 @@ impl AppState {
                 // if t.color == Color::Lime {
                 //     continue;
                 // }
-                let t = self.bb.reproject_triangle(t);
                 if self.selected_faces.contains(&face.id) {
                     self.draw_triangle(&t, Color::Selected);
                 } else {
@@ -453,10 +501,14 @@ impl AppState {
     }
     pub fn partial_culling(&mut self) {
         let mut drawn: Vec<&mut Face> = vec![];
-        let (view_face, view_cut_idx) = match self.view {
-            AppView::SliceView { face, idx } => (face, idx),
-            _ => (0, 0)
+        let (view_face, cutter_face, view_cut_idx) = match self.view {
+            AppView::SliceView { face, idx } => match face {
+                SliceThing::OneFace(fid) => (fid, fid, idx),
+                SliceThing::TwoFace(f1, f2) => (f1, f2, idx),
+            },
+            _ => (0, 0, 0)
         };
+        let mut cut_idx = 0;
         // it's time to split hairs
         'cut: for (i, face) in self.faces.iter_mut().enumerate() {
             if face.culled {
@@ -469,21 +521,22 @@ impl AppState {
                     break;
                 }
             }
-            let mut cut_idx = 0;
             for f2 in drawn.iter() {
                 let mut haircut: Vec<Triangle> = vec![];
                 for t in face.haircut.iter() {
                     let mut split = *t - f2.hair;
-                    if split.len() > 1 || (split.len() == 1 && split[0] != *t) {
-                        cut_idx += 1;
-                        console::log_1(&format!("face id: {}, view: {}, cut: {}, view_cut: {}", face.id, view_face, cut_idx, view_cut_idx).into());
-                        if face.id == view_face && cut_idx == view_cut_idx {
-                            self.debug_view = Some(DebugView {
-                                tri: *t,
-                                haircut: split,
-                                cutter: f2.hair
-                            });
-                            return;
+                    if split.len() > 1 || (split.len() == 1 && split[0] != *t) || (cutter_face != view_face && f2.id == cutter_face && face.id == view_face) {
+                        // console::log_1(&format!("face id: {}, view: {}, cut: {}, view_cut: {}", face.id, view_face, cut_idx, view_cut_idx).into());
+                        if face.id == view_face || f2.id == cutter_face {
+                            cut_idx += 1;
+                            if cut_idx == view_cut_idx {
+                                self.debug_view = Some(DebugView {
+                                    tri: *t,
+                                    haircut: split,
+                                    cutter: f2.hair
+                                });
+                                return;
+                            }
                         }
                     }
                     haircut.append(&mut split);

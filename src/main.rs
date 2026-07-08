@@ -164,22 +164,23 @@ fn App(props: &Props) -> Html {
                         // insufficient drag distance; this is just a click
                         let app = app.borrow();
                         console::log_1(&format!("Clicked: {:?}", app.selected_faces).into());
-                        let face = app.selected_faces.iter().last().copied();
-                        if let Some(face) = face {
-                            match app.view {
-                                AppView::Painter { .. } => {
-                                    if app.faces.iter().find(|f| f.id == face).unwrap().haircut.len() > 1 {
-                                        console::log_1(&"pushing slice view".into());
-                                        navigator.push(&AppView::SliceView { face, idx: 1 });
-                                    }
-                                },
-                                AppView::Main | AppView::NoClip => {
-                                    console::log_1(&"pushing painter view".into());
-                                    navigator.push(&AppView::Painter { face: face });
+                        let faces: Vec<_> = app.selected_faces.iter().take(2).collect();
+                        match app.view {
+                            AppView::Painter { .. } | AppView::SliceView { .. } => {
+                                match faces.len() {
+                                    1 => navigator.push(&AppView::SliceView { face: SliceThing::OneFace(*faces[0]), idx: 1 }),
+                                    2 => navigator.push(&AppView::SliceView { face: SliceThing::TwoFace(*faces[1], *faces[0]), idx: 1 }),
+                                    _ => ()
                                 }
-                                _ => (),
-                            };
-                        }
+                            },
+                            AppView::Main | AppView::NoClip => {
+                                console::log_1(&"pushing painter view".into());
+                                if !faces.is_empty() {
+                                    navigator.push(&AppView::Painter { face: *faces.into_iter().last().unwrap() });
+                                }
+                            }
+                            _ => (),
+                        };
                         *selection = None;
                     }
                     Some(s) => {

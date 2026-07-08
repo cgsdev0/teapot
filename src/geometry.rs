@@ -3,6 +3,7 @@ use std::array::IntoIter;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
+use web_sys::console;
 
 pub type F64 = OrderedFloat<f64>;
 
@@ -412,11 +413,11 @@ impl Sub for Triangle {
         let scount = self_included.len();
         let shared_count = shared.len();
 
-        eprintln!("intersections: {}", real.len());
-        eprintln!("projected: {}", projected.len());
-        eprintln!("scount: {}", scount);
-        eprintln!("ocount: {}", ocount);
-        eprintln!("shared: {}\n", shared_count);
+        console::log_1(&format!("intersections: {}", real.len()).into());
+        console::log_1(&format!("projected: {}", projected.len()).into());
+        console::log_1(&format!("scount: {}", scount).into());
+        console::log_1(&format!("ocount: {}", ocount).into());
+        console::log_1(&format!("shared: {}\n", shared_count).into());
         // JAGI
         match (real.len(), projected.len(), scount, ocount, shared_count) {
             (_, _, _, _, 3) => {
@@ -739,7 +740,7 @@ impl Sub for Triangle {
                 ]));
             }
             _ => {
-                eprintln!("it matched nobody");
+                console::log_1(&"it matched nobody".into());
                 return vec![self];
                 // cursed_subtraction_debug(&self, &other, &i, false);
             }
