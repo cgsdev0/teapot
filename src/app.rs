@@ -152,7 +152,15 @@ enum ColorType {
 }
 
 impl ColorType {
+    pub fn pen(&self) -> usize {
+        match self {
+            ColorType::Rhs => 6,
+            ColorType::Cut => 7,
+            _ => 0,
+        }
+    }
     pub fn fill(&self) -> Option<Color> {
+        return None;
         match self {
             ColorType::Primary => Some(Color::WHITE.alpha(0.25)),
             ColorType::Lhs => Some(Color::WHITE.alpha(0.25)),
@@ -182,7 +190,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../models/teapot.obj");
+const TEAPOT: &str = include_str!("../models/pi_case.obj");
 
 impl Default for AppState {
     fn default() -> Self {
@@ -267,6 +275,9 @@ impl AppState {
 
     fn draw_triangle(&self, d: &mut Option<&mut RaylibDrawHandle>, t: &Triangle, color: ColorType) {
         let Some(d) = d else {
+            for line in t.lines() {
+                self.draw_line(d, line.a, line.b, color);
+            }
             return;
         };
         let t = self.bb.reproject_triangle(t);
@@ -291,10 +302,18 @@ impl AppState {
         }
     }
 
-    fn draw_line(&self, d: &mut Option<&mut RaylibDrawHandle>, p1: Point, p2: Point) {
+    fn draw_line(
+        &self,
+        d: &mut Option<&mut RaylibDrawHandle>,
+        p1: Point,
+        p2: Point,
+        color: ColorType,
+    ) {
         let p1 = self.bb.reproject(&p1);
         let p2 = self.bb.reproject(&p2);
         let Some(d) = d else {
+            let pen = color.pen();
+            println!("SP{};", pen);
             let (x, y) = self.to_paper(p1);
             println!("PU {},{};", x, y);
             let (x, y) = self.to_paper(p2);
@@ -310,7 +329,7 @@ impl AppState {
         let new_point = self.nav.zoom.reproject(&Point {
             x: ((p.x + 1.0) / 2.0 * 7650.0 + 1325.0),
             y: ((-p.y + 1.0) / 2.0 * 7650.0),
-            z: 0.0.into(),
+            z: 0.0,
         });
         (new_point.x as i32, new_point.y as i32)
     }
@@ -414,12 +433,19 @@ impl AppState {
                 if self.selected_faces.contains(&face.id) {
                     self.draw_triangle(d, t, ColorType::Selected);
                 } else {
-                    self.draw_triangle(d, t, ColorType::Primary);
+                    self.draw_triangle(
+                        d,
+                        t,
+                        match face.haircut.len() {
+                            1 => ColorType::Primary,
+                            _ => ColorType::Cut,
+                        },
+                    );
                 }
             }
         }
         for edge in self.edges.iter() {
-            self.draw_line(d, edge.a, edge.b);
+            self.draw_line(d, edge.a, edge.b, ColorType::Rhs);
         }
     }
 
