@@ -141,24 +141,30 @@ impl ColorType {
             ColorType::Rhs => Some(Color::RED.alpha(0.25)),
             ColorType::Difference => None,
             ColorType::Selected => Some(Color::LIME.alpha(0.25)),
-            ColorType::Cut => Some(Color::from_hex("#00aaaa").unwrap().alpha(0.25)),
+            ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap().alpha(0.25)),
             ColorType::Dark => None,
         }
     }
     pub fn stroke(&self) -> Option<Color> {
         match self {
             ColorType::Primary => None,
-            ColorType::Lhs => Some(Color::from_hex("#666").unwrap()),
+            ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
             ColorType::Rhs => Some(Color::RED),
             ColorType::Difference => Some(Color::BLUE),
             ColorType::Selected => Some(Color::LIME),
-            ColorType::Cut => Some(Color::from_hex("#00aaaa").unwrap()),
+            ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap()),
             ColorType::Dark => Some(Color::WHITE.alpha(0.1)),
         }
     }
 }
 
 const TEAPOT: &str = include_str!("../teapot.obj");
+
+impl Default for AppState {
+    fn default() -> Self {
+        AppState::new()
+    }
+}
 
 impl AppState {
     pub fn new() -> Self {
@@ -173,6 +179,22 @@ impl AppState {
         }
     }
     pub fn update(&mut self, rl: &mut RaylibHandle) {
+        // arrow keys
+        match self.nav.current() {
+            AppView::SliceView { face, idx } => {
+                if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
+                    if idx > 0 {
+                        self.nav.push(AppView::SliceView { face, idx: idx - 1 });
+                        self.restart();
+                    }
+                } else if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
+                    self.nav.push(AppView::SliceView { face, idx: idx + 1 });
+                    self.restart();
+                }
+            }
+            _ => {}
+        };
+        // mouse stuff
         let pos = rl.get_mouse_position();
         if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             self.selection = Some((pos, pos));
@@ -186,9 +208,8 @@ impl AppState {
                 let dx = delta.x.abs();
                 let dy = delta.y.abs();
                 if dx < 5.0 && dy < 5.0 {
-                    // TODO: this is a click
-                    self.nav.push(AppView::Main);
                     self.selection = None;
+                    self.pointer_click(pos.x, pos.y);
                     return;
                 }
                 // apply selection
@@ -204,7 +225,7 @@ impl AppState {
         if let Some(selection) = &mut self.selection {
             selection.1 = rl.get_mouse_position();
         } else {
-            self.move_pointer(pos.x, pos.y);
+            self.pointer_move(pos.x, pos.y);
         }
     }
 
@@ -279,7 +300,7 @@ impl AppState {
         self.clear(d);
         let view = self.nav.current();
         match view {
-            // AppView::SliceView { .. } => self.render_debug(d),
+            AppView::SliceView { .. } => self.render_debug(d),
             _ => self.render_standard(d),
         };
         if let Some(selection) = self.selection {
@@ -295,30 +316,30 @@ impl AppState {
         }
     }
 
-    // pub fn render_debug(&self, d: &mut RaylibDrawHandle) {
-    //     let Some(debug_view) = &self.debug_view else {
-    //         self.render_standard(d);
-    //         return;
-    //     };
-    //     for face in self.faces.iter() {
-    //         if face.culled {
-    //             continue;
-    //         }
-    //         for t in &face.haircut {
-    //             self.draw_triangle(&t, ColorType::Dark);
-    //         }
-    //     }
-    //     let DebugView {
-    //         tri,
-    //         haircut,
-    //         cutter,
-    //     } = debug_view;
-    //     self.draw_triangle(&tri, ColorType::Lhs);
-    //     self.draw_triangle(&cutter, ColorType::Rhs);
-    //     for cut in haircut {
-    //         self.draw_triangle(&cut, ColorType::Difference);
-    //     }
-    // }
+    pub fn render_debug(&self, d: &mut RaylibDrawHandle) {
+        let Some(debug_view) = &self.debug_view else {
+            self.render_standard(d);
+            return;
+        };
+        for face in self.faces.iter() {
+            if face.culled {
+                continue;
+            }
+            for t in &face.haircut {
+                self.draw_triangle(d, t, ColorType::Dark);
+            }
+        }
+        let DebugView {
+            tri,
+            haircut,
+            cutter,
+        } = debug_view;
+        self.draw_triangle(d, tri, ColorType::Lhs);
+        self.draw_triangle(d, cutter, ColorType::Rhs);
+        for cut in haircut {
+            self.draw_triangle(d, cut, ColorType::Difference);
+        }
+    }
 
     pub fn render_standard(&self, d: &mut RaylibDrawHandle) {
         for face in self.faces.iter() {
@@ -388,7 +409,38 @@ impl AppState {
             .collect();
     }
 
-    pub fn move_pointer(&mut self, x: f32, y: f32) {
+    pub fn pointer_click(&mut self, x: f32, y: f32) {
+        println!("Clicked: {:?}", self.selected_faces);
+        let faces: Vec<_> = self.selected_faces.iter().take(2).collect();
+        match self.nav.current() {
+            AppView::Painter { .. } | AppView::SliceView { .. } => match faces.len() {
+                1 => {
+                    self.nav.push(AppView::SliceView {
+                        face: SliceThing::OneFace(*faces[0]),
+                        idx: 1,
+                    });
+                    self.restart();
+                }
+                2 => {
+                    self.nav.push(AppView::SliceView {
+                        face: SliceThing::TwoFace(*faces[1], *faces[0]),
+                        idx: 1,
+                    });
+                    self.restart();
+                }
+                _ => (),
+            },
+            AppView::Main if !faces.is_empty() => {
+                self.nav.push(AppView::Painter {
+                    face: *faces.into_iter().last().unwrap(),
+                });
+                self.restart();
+            }
+            _ => (),
+        };
+    }
+
+    pub fn pointer_move(&mut self, x: f32, y: f32) {
         let p = Point {
             x: (x as f64).into(),
             y: (y as f64).into(),

@@ -98,6 +98,7 @@ impl Navigator {
 
     pub fn push(&mut self, view: AppView) {
         self.stack.push(view);
+        println!("view: {:?}", view);
         // prevent the stack from getting too beeg
         if self.stack.len() > 100 {
             self.stack.drain(0..20);
