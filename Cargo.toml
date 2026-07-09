@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+i_overlay = "7.0.2"
 ordered-float = { version = "5.3.0", features = [ 'serde' ] }
 raylib = "6.0.0"
 serde = { version = "1.0.228", features = [ 'derive' ] }
