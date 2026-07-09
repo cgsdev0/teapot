@@ -11,8 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
-pub type F64 = OrderedFloat<f64>;
-
 #[derive(Copy, Clone, Debug)]
 pub struct Line {
     pub a: Point,
@@ -26,7 +24,7 @@ impl PartialEq for Line {
 }
 
 impl Eq for Line {}
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Intersection {
     pub a: Line,
     pub b: Line,
@@ -50,18 +48,6 @@ impl Intersection {
             self.b
         } else {
             self.a
-        }
-    }
-}
-
-impl Hash for Line {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        if self.a <= self.b {
-            self.a.hash(state);
-            self.b.hash(state);
-        } else {
-            self.b.hash(state);
-            self.a.hash(state);
         }
     }
 }
@@ -388,18 +374,32 @@ impl Sub for Triangle {
     }
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Point {
-    pub x: F64,
-    pub y: F64,
-    pub z: F64,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
 }
+
+impl PartialEq for Point {
+    fn eq(&self, other: &Point) -> bool {
+        let x = OrderedFloat::from(self.x);
+        let y = OrderedFloat::from(self.y);
+        let z = OrderedFloat::from(self.z);
+        let ox = OrderedFloat::from(other.x);
+        let oy = OrderedFloat::from(other.y);
+        let oz = OrderedFloat::from(other.z);
+        x == ox && y == oy && z == oz
+    }
+}
+
+impl Eq for Point {}
 
 impl From<Point> for raylib::ffi::Vector2 {
     fn from(item: Point) -> Self {
         raylib::ffi::Vector2 {
-            x: item.x.into_inner() as f32,
-            y: item.y.into_inner() as f32,
+            x: item.x as f32,
+            y: item.y as f32,
         }
     }
 }
@@ -441,11 +441,11 @@ impl Point {
         }
     }
 
-    pub fn dot(&self, other: &Point) -> F64 {
+    pub fn dot(&self, other: &Point) -> f64 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
 
-    pub fn dist2(&self, other: &Point) -> F64 {
+    pub fn dist2(&self, other: &Point) -> f64 {
         let x = other.x - self.x;
         let y = other.y - self.y;
         let z = other.z - self.z;
@@ -462,7 +462,7 @@ impl Point {
             .filter(|i| i.on_line(line))
             .fold(
                 (None, f64::INFINITY.into()),
-                |(mut best, mut best_dist): (Option<Intersection>, F64), &intersection| {
+                |(mut best, mut best_dist): (Option<Intersection>, f64), &intersection| {
                     let d = intersection.point.dist2(self);
                     if d < best_dist {
                         best = Some(*intersection);
@@ -484,7 +484,11 @@ impl PartialOrd for Point {
 
 impl Ord for Point {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.x.cmp(&other.x).then(self.y.cmp(&other.y))
+        let x = OrderedFloat::from(self.x);
+        let y = OrderedFloat::from(self.y);
+        let ox = OrderedFloat::from(other.x);
+        let oy = OrderedFloat::from(other.y);
+        x.cmp(&ox).then(y.cmp(&oy))
     }
 }
 
@@ -508,9 +512,9 @@ impl Sub for Point {
         }
     }
 }
-impl Mul<F64> for Point {
+impl Mul<f64> for Point {
     type Output = Point;
-    fn mul(self, s: F64) -> Point {
+    fn mul(self, s: f64) -> Point {
         Point {
             x: self.x * s,
             y: self.y * s,

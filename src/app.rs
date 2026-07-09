@@ -1,15 +1,13 @@
 use crate::geometry::BoundingBox;
 use raylib::prelude::*;
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::str::FromStr;
+use std::collections::HashSet;
 
 use raylib::prelude::RaylibDrawHandle;
 
 use crate::geometry::*;
 use crate::navigator::*;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
     pub vertex: Point,
     pub normal: Option<Point>,
@@ -24,14 +22,6 @@ pub struct Face {
     pub hair: Triangle,
     pub haircut: Vec<Triangle>,
     pub culled: bool,
-}
-
-impl Hash for Face {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.eyes.hash(state);
-        self.noes.hash(state);
-        self.ears.hash(state);
-    }
 }
 
 // 3. Implement PartialOrd (Required by Ord)
@@ -70,6 +60,29 @@ impl Face {
         }
         .normalize()
     }
+    pub fn hatch(&self, light: Point) -> Vec<Line> {
+        let normal = self.calc_normal();
+        let dot = light.dot(&normal);
+        let l: f64 = dot;
+        let l: u8 = (l * 255.0).floor() as u8;
+        // let color = ColorType::Shaded(l);
+        let proj_normal = project(normal);
+        let mut bb = BoundingBox::new();
+        for p in self.hair.points() {
+            bb.expand(&p);
+        }
+        /*
+        for x in { bb.min.x .. bb.max.x } {
+            for y in { bb.min.y .. bb.max.y } {
+            }
+        }
+        */
+        vec![]
+        // create a set of lines, perpendicular to the projected normal,
+        // that fill the bounding box of face.hair
+        // clip those lines to face.haircut
+        // and draw them
+    }
 }
 
 pub struct DebugView {
@@ -91,8 +104,8 @@ pub struct AppState {
 #[allow(dead_code)]
 fn paper(p: Point) -> (u16, u16) {
     (
-        ((p.x.into_inner() + 1.0) / 2.0 * 7650.0 + 1000.0) as u16,
-        (((-p.y).into_inner() + 1.0) / 2.0 * 7650.0) as u16,
+        ((p.x + 1.0) / 2.0 * 7650.0 + 1000.0) as u16,
+        ((-p.y + 1.0) / 2.0 * 7650.0) as u16,
     )
 }
 
@@ -100,7 +113,7 @@ fn project(p: Point) -> Point {
     Point {
         x: p.x / (p.z / 2.0),
         y: p.y / (p.z / 2.0),
-        z: 0.0.into(),
+        z: 0.0,
     }
 }
 
@@ -112,7 +125,7 @@ fn translate(p: Point) -> Point {
     }
 }
 
-fn rotate(p: Point, angle: F64) -> Point {
+fn rotate(p: Point, angle: f64) -> Point {
     let c = angle.cos();
     let s = angle.sin();
     Point {
@@ -131,6 +144,7 @@ enum ColorType {
     Selected,
     Cut,
     Dark,
+    Shaded(u8),
 }
 
 impl ColorType {
@@ -143,22 +157,23 @@ impl ColorType {
             ColorType::Selected => Some(Color::LIME.alpha(0.25)),
             ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap().alpha(0.25)),
             ColorType::Dark => None,
+            ColorType::Shaded(val) => Some(Color { r: *val, g: *val, b: *val, a: 255 }),
         }
     }
     pub fn stroke(&self) -> Option<Color> {
         match self {
-            ColorType::Primary => None,
             ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
             ColorType::Rhs => Some(Color::RED),
             ColorType::Difference => Some(Color::BLUE),
             ColorType::Selected => Some(Color::LIME),
             ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap()),
             ColorType::Dark => Some(Color::WHITE.alpha(0.1)),
+            _ => None,
         }
     }
 }
 
-const TEAPOT: &str = include_str!("../duck.obj");
+const TEAPOT: &str = include_str!("../teapot.obj");
 
 impl Default for AppState {
     fn default() -> Self {
@@ -180,20 +195,32 @@ impl AppState {
     }
     pub fn update(&mut self, rl: &mut RaylibHandle) {
         // arrow keys
-        match self.nav.current() {
-            AppView::SliceView { face, idx } => {
-                if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
-                    if idx > 0 {
-                        self.nav.push(AppView::SliceView { face, idx: idx - 1 });
-                        self.restart();
-                    }
-                } else if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
-                    self.nav.push(AppView::SliceView { face, idx: idx + 1 });
-                    self.restart();
-                }
+        // match self.nav.current() {
+        //     AppView::SliceView { face, idx } => {
+        //         if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
+        //             if idx > 0 {
+        //                 self.nav.push(AppView::SliceView { face, idx: idx - 1 });
+        //                 self.restart();
+        //             }
+        //         } else if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
+        //             self.nav.push(AppView::SliceView { face, idx: idx + 1 });
+        //             self.restart();
+        //         }
+        //     }
+        //     _ => {}
+        // };
+        if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
+                self.nav.go_back();
+                self.restart();
             }
-            _ => {}
-        };
+        }
+        if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
+                self.nav.go_forward();
+                self.restart();
+            }
+        }
         // mouse stuff
         let pos = rl.get_mouse_position();
         if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
@@ -275,8 +302,8 @@ impl AppState {
             z: 0.0.into(),
         });
         (
-            new_point.x.into_inner() as i32,
-            new_point.y.into_inner() as i32,
+            new_point.x as i32,
+            new_point.y as i32,
         )
     }
 
@@ -287,8 +314,8 @@ impl AppState {
             z: 0.0.into(),
         });
         Vector2 {
-            x: new_point.x.into_inner() as f32,
-            y: new_point.y.into_inner() as f32,
+            x: new_point.x as f32,
+            y: new_point.y as f32,
         }
     }
 
@@ -362,43 +389,27 @@ impl AppState {
     }
 
     pub fn render_standard(&self, d: &mut Option<&mut RaylibDrawHandle>) {
+        // let light = Point {
+        //     x: 0.25.into(),
+        //     y: (-0.5 as f64).into(),
+        //     z: (0.5 as f64).into(),
+        // };
+        // let light = light.normalize();
         for face in self.faces.iter() {
             if face.culled {
                 continue;
             }
-            // if i > 274 {
-            //     break;
+            // for l in face.hatch(&light) {
+            //     self.draw_line(d, l.a, l.b);
             // }
-
             for t in &face.haircut {
-                // if t.color == ColorType::Primary {
-                //     continue;
-                // }
                 if self.selected_faces.contains(&face.id) {
                     self.draw_triangle(d, t, ColorType::Selected);
                 } else {
-                    self.draw_triangle(
-                        d,
-                        t,
-                        match face.haircut.len() {
-                            1 => ColorType::Primary,
-                            _ => ColorType::Primary,
-                        },
-                    );
-
-                    // self.draw_triangle(
-                    //     &t,
-                    //     match face.haircut.len() {
-                    //         1 => ColorType::Primary,
-                    //         _ => ColorType::Cut,
-                    //     },
-                    // );
+                    self.draw_triangle(d, t, ColorType::Primary);
                 }
             }
         }
-        // for &edge in self.edges.iter() {
-        //     self.draw_line(d, edge.a, edge.b);
-        // }
     }
 
     pub fn clear(&self, d: &mut Option<&mut RaylibDrawHandle>) {
@@ -406,37 +417,6 @@ impl AppState {
             return;
         };
         d.clear_background(Color::BLACK);
-    }
-
-    pub fn find_edges(&mut self) {
-        let mut edges: HashMap<Line, usize> = std::collections::HashMap::new();
-        for face in self.faces.iter() {
-            if face.culled {
-                continue;
-            }
-            // if i > 274 {
-            //     break;
-            // }
-
-            for t in &face.haircut {
-                let t = self.bb.reproject_triangle(t);
-                for edge in t.lines() {
-                    match edges.get(&edge) {
-                        Some(count) => {
-                            edges.insert(edge, count + 1);
-                        }
-                        None => {
-                            edges.insert(edge, 1);
-                        }
-                    }
-                }
-            }
-        }
-        self.edges = edges
-            .iter()
-            .filter(|&(_, &count)| count == 1)
-            .map(|(&line, _)| line)
-            .collect();
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
@@ -609,7 +589,7 @@ impl AppState {
         self.debug_view = None;
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
-        let dt: F64 = (std::f64::consts::PI / 2.0).into();
+        let dt: f64 = (std::f64::consts::PI / 2.0).into();
         for line in TEAPOT.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
             match parts[0] {
@@ -652,16 +632,16 @@ impl AppState {
                 }
                 "v" => {
                     v.push(Point {
-                        x: parts[1].parse::<F64>().unwrap(),
-                        y: parts[2].parse::<F64>().unwrap(),
-                        z: parts[3].parse::<F64>().unwrap(),
+                        x: parts[1].parse::<f64>().unwrap(),
+                        y: parts[2].parse::<f64>().unwrap(),
+                        z: parts[3].parse::<f64>().unwrap(),
                     });
                 }
                 "vn" => {
                     vn.push(Point {
-                        x: parts[1].parse::<F64>().unwrap(),
-                        y: parts[2].parse::<F64>().unwrap(),
-                        z: parts[3].parse::<F64>().unwrap(),
+                        x: parts[1].parse::<f64>().unwrap(),
+                        y: parts[2].parse::<f64>().unwrap(),
+                        z: parts[3].parse::<f64>().unwrap(),
                     });
                 }
                 _ => {}
@@ -680,6 +660,5 @@ impl AppState {
         self.partial_culling();
 
         self.bb.make_square();
-        self.find_edges();
     }
 }
