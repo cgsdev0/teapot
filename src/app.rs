@@ -158,7 +158,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../duck.obj");
+const TEAPOT: &str = include_str!("../models/teapot.obj");
 
 impl Default for AppState {
     fn default() -> Self {
