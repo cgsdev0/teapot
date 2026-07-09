@@ -55,14 +55,14 @@ impl Navigator {
 
     pub fn zoom_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
         let min = self.zoom.unproject(&Point {
-            x: x1.min(x2).into(),
-            y: y1.min(y2).into(),
-            z: 0.0.into(),
+            x: x1.min(x2),
+            y: y1.min(y2),
+            z: 0.0,
         });
         let max = self.zoom.unproject(&Point {
-            x: x2.max(x1).into(),
-            y: y2.max(y1).into(),
-            z: 0.0.into(),
+            x: x2.max(x1),
+            y: y2.max(y1),
+            z: 0.0,
         });
         self.zoom = BoundingBox {
             min,
@@ -76,14 +76,14 @@ impl Navigator {
         self.zoom = BoundingBox::new();
         self.zoom.mode = BBMode::FromTopLeft;
         self.zoom.expand(&Point {
-            x: 0.0.into(),
-            y: 0.0.into(),
-            z: 0.0.into(),
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
         });
         self.zoom.expand(&Point {
-            x: 1030.0.into(),
-            y: 765.0.into(),
-            z: 0.0.into(),
+            x: 1030.0,
+            y: 765.0,
+            z: 0.0,
         });
         self.save();
     }
