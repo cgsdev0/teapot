@@ -1,4 +1,8 @@
 use crate::geometry::BoundingBox;
+use i_overlay::core::fill_rule::FillRule;
+use i_overlay::core::overlay_rule::OverlayRule;
+use i_overlay::float::single::SingleFloatOverlay;
+use itertools::Itertools;
 use raylib::prelude::*;
 use std::collections::HashSet;
 
@@ -157,7 +161,12 @@ impl ColorType {
             ColorType::Selected => Some(Color::LIME.alpha(0.25)),
             ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap().alpha(0.25)),
             ColorType::Dark => None,
-            ColorType::Shaded(val) => Some(Color { r: *val, g: *val, b: *val, a: 255 }),
+            ColorType::Shaded(val) => Some(Color {
+                r: *val,
+                g: *val,
+                b: *val,
+                a: 255,
+            }),
         }
     }
     pub fn stroke(&self) -> Option<Color> {
@@ -283,6 +292,8 @@ impl AppState {
     }
 
     fn draw_line(&self, d: &mut Option<&mut RaylibDrawHandle>, p1: Point, p2: Point) {
+        let p1 = self.bb.reproject(&p1);
+        let p2 = self.bb.reproject(&p2);
         let Some(d) = d else {
             let (x, y) = self.to_paper(p1);
             println!("PU {},{};", x, y);
@@ -301,10 +312,7 @@ impl AppState {
             y: ((-p.y + 1.0) / 2.0 * 7650.0),
             z: 0.0.into(),
         });
-        (
-            new_point.x as i32,
-            new_point.y as i32,
-        )
+        (new_point.x as i32, new_point.y as i32)
     }
 
     fn to_canvas(&self, p: Point) -> Vector2 {
@@ -409,6 +417,9 @@ impl AppState {
                     self.draw_triangle(d, t, ColorType::Primary);
                 }
             }
+        }
+        for edge in self.edges.iter() {
+            self.draw_line(d, edge.a, edge.b);
         }
     }
 
@@ -660,5 +671,22 @@ impl AppState {
         self.partial_culling();
 
         self.bb.make_square();
+        self.find_edges();
+    }
+    pub fn find_edges(&mut self) {
+        let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
+        for face in self.faces.iter() {
+            let t = face.hair;
+            let clip = [t.a, t.b, t.c];
+            let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
+            subj = result;
+        }
+        for shape in subj {
+            for contour in shape {
+                for [a, b] in contour.iter().circular_array_windows::<2>() {
+                    self.edges.push(Line { a: *a, b: *b });
+                }
+            }
+        }
     }
 }
