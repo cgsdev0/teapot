@@ -2,7 +2,6 @@ use std::fs;
 
 use crate::geometry::{BBMode, BoundingBox, Point};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum SliceThing {
@@ -136,5 +135,11 @@ impl Navigator {
         let res = self.stack.pop();
         self.save();
         res
+    }
+}
+
+impl Default for Navigator {
+    fn default() -> Self {
+        Self::new()
     }
 }

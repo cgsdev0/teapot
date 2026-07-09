@@ -1,8 +1,8 @@
 use raylib::prelude::*;
 
-mod app;
-mod geometry;
-mod navigator;
+pub mod app;
+pub mod geometry;
+pub mod navigator;
 
 use crate::app::*;
 
