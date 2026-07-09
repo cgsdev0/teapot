@@ -158,7 +158,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../utah-beetle-only.obj");
+const TEAPOT: &str = include_str!("../bunny.obj");
 
 impl Default for AppState {
     fn default() -> Self {
