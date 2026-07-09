@@ -398,7 +398,7 @@ impl AppState {
         let new_point = self.nav.zoom.reproject(&Point {
             x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5),
             y: ((-p.y + 1.0) / 2.0 * 765.0),
-            z: 0.0.into(),
+            z: 0.0,
         });
         Vector2 {
             x: new_point.x as f32,
@@ -411,7 +411,7 @@ impl AppState {
         Point {
             x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0),
             y: (-((p.y * 2.0 / 765.0) - 1.0)),
-            z: 0.0.into(),
+            z: 0.0,
         }
     }
 
@@ -549,9 +549,9 @@ impl AppState {
 
     pub fn pointer_move(&mut self, x: f32, y: f32) {
         let p = Point {
-            x: (x as f64).into(),
-            y: (y as f64).into(),
-            z: 0.0.into(),
+            x: (x as f64),
+            y: (y as f64),
+            z: 0.0,
         };
         let p = self.from_canvas(&p);
         let p = self.bb.unproject(&p);
@@ -581,7 +581,7 @@ impl AppState {
             let n = face.calc_normal();
             let c = face.calc_centroid().normalize();
             let which_way = n.dot(&c);
-            if which_way <= 0.0.into() {
+            if which_way <= 0.0 {
                 face.culled = true;
             }
         }
@@ -636,7 +636,7 @@ impl AppState {
             if let AppView::Painter { face } = view {
                 // TODO: check face IDs?
                 if i > face {
-                    // console::log_1(&format!("breaking cuz {} > {}", i, face).into());
+                    // console::log_1(&format!("breaking cuz {} > {}", i, face));
                     break;
                 }
             }
@@ -650,7 +650,7 @@ impl AppState {
                             && f2.id == cutter_face
                             && face.id == view_face)
                     {
-                        // console::log_1(&format!("face id: {}, view: {}, cut: {}, view_cut: {}", face.id, view_face, cut_idx, view_cut_idx).into());
+                        // console::log_1(&format!("face id: {}, view: {}, cut: {}, view_cut: {}", face.id, view_face, cut_idx, view_cut_idx));
                         if face.id == view_face || f2.id == cutter_face {
                             cut_idx += 1;
                             if cut_idx == view_cut_idx {
@@ -680,13 +680,13 @@ impl AppState {
     }
 
     pub fn restart(&mut self) {
-        // console::log_1(&format!("view: {:?}", self.view).into());
+        // console::log_1(&format!("view: {:?}", self.view));
         self.edges.clear();
         self.faces.clear();
         self.debug_view = None;
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
-        let dt: f64 = (std::f64::consts::PI / 2.0).into();
+        let dt: f64 = std::f64::consts::PI / 2.0;
         for line in TEAPOT.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
             match parts[0] {

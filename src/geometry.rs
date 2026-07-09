@@ -3,12 +3,9 @@ use i_overlay::core::overlay_rule::OverlayRule;
 use i_overlay::float::single::SingleFloatOverlay;
 use i_overlay::i_float::float::compatible::FloatPointCompatible;
 use i_triangle::float::triangulatable::Triangulatable;
-use i_triangle::float::triangulator::Triangulator;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::array::IntoIter;
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
 #[derive(Copy, Clone, Debug)]
@@ -98,14 +95,14 @@ impl Line {
                     x: a.a.x + t * (a.b.x - a.a.x),
                     y: a.a.y + t * (a.b.y - a.a.y),
                     // unused
-                    z: 0.0.into(),
+                    z: 0.0,
                 },
                 real: !a.shares_point_with(&b)
-                    && (0.0..=1.0).contains(&t.into())
-                    && (0.0..=1.0).contains(&u.into()),
+                    && (0.0..=1.0).contains(&t)
+                    && (0.0..=1.0).contains(&u),
                 projected: !a.shares_point_with(&b)
-                    && (0.0..=1.0).contains(&t.into())
-                    && !(0.0..=1.0).contains(&u.into()),
+                    && (0.0..=1.0).contains(&t)
+                    && !(0.0..=1.0).contains(&u),
             })
         }
     }
@@ -170,15 +167,15 @@ impl Triangle {
 
         det * ((self.b.x - self.a.x) * (point.y - self.a.y)
             - (self.b.y - self.a.y) * (point.x - self.a.x))
-            >= 0.0.into()
+            >= 0.0
             && det
                 * ((self.c.x - self.b.x) * (point.y - self.b.y)
                     - (self.c.y - self.b.y) * (point.x - self.b.x))
-                >= 0.0.into()
+                >= 0.0
             && det
                 * ((self.a.x - self.c.x) * (point.y - self.c.y)
                     - (self.a.y - self.c.y) * (point.x - self.c.x))
-                >= 0.0.into()
+                >= 0.0
     }
     pub fn area(&self) -> f64 {
         let a = self.a.x * (self.b.y - self.c.y)
@@ -228,14 +225,14 @@ impl BoundingBox {
     pub fn new() -> Self {
         Self {
             min: Point {
-                x: f64::INFINITY.into(),
-                y: f64::INFINITY.into(),
-                z: 0.0.into(),
+                x: f64::INFINITY,
+                y: f64::INFINITY,
+                z: 0.0,
             },
             max: Point {
-                x: f64::NEG_INFINITY.into(),
-                y: f64::NEG_INFINITY.into(),
-                z: 0.0.into(),
+                x: f64::NEG_INFINITY,
+                y: f64::NEG_INFINITY,
+                z: 0.0,
             },
             mode: BBMode::FromCenter,
         }
@@ -280,22 +277,22 @@ impl BoundingBox {
     pub fn reproject(&self, point: &Point) -> Point {
         // let zx = (x) => (x - box.x1) * (canvas.width / (box.x2 - box.x1));
         // let zy = (y) => (y - box.y1) * (canvas.height / (box.y2 - box.y1));
-        let xrange = self.reproject1d(point.x.into(), self.min.x.into(), self.max.x.into(), 1030.0);
-        let yrange = self.reproject1d(point.y.into(), self.min.y.into(), self.max.y.into(), 765.0);
+        let xrange = self.reproject1d(point.x, self.min.x, self.max.x, 1030.0);
+        let yrange = self.reproject1d(point.y, self.min.y, self.max.y, 765.0);
         Point {
-            x: xrange.into(),
-            y: yrange.into(),
-            z: 0.0.into(),
+            x: xrange,
+            y: yrange,
+            z: 0.0,
         }
     }
 
     pub fn unproject(&self, point: &Point) -> Point {
-        let xrange = self.unproject1d(point.x.into(), self.min.x.into(), self.max.x.into(), 1030.0);
-        let yrange = self.unproject1d(point.y.into(), self.min.y.into(), self.max.y.into(), 765.0);
+        let xrange = self.unproject1d(point.x, self.min.x, self.max.x, 1030.0);
+        let yrange = self.unproject1d(point.y, self.min.y, self.max.y, 765.0);
         Point {
-            x: xrange.into(),
-            y: yrange.into(),
-            z: 0.0.into(),
+            x: xrange,
+            y: yrange,
+            z: 0.0,
         }
     }
 
@@ -415,19 +412,15 @@ impl FloatPointCompatible for Point {
     type Scalar = f64;
 
     fn from_xy(x: f64, y: f64) -> Self {
-        Self {
-            x: x.into(),
-            y: y.into(),
-            z: 0.0.into(),
-        }
+        Self { x, y, z: 0.0 }
     }
 
     fn x(&self) -> f64 {
-        self.x.into()
+        self.x
     }
 
     fn y(&self) -> f64 {
-        self.y.into()
+        self.y
     }
 }
 
@@ -462,6 +455,10 @@ impl Point {
         x * x + y * y + z * z
     }
 
+    pub fn dist(&self, other: &Point) -> f64 {
+        self.dist2(other).sqrt()
+    }
+
     pub fn closest_intersection(
         &self,
         intersections: &Vec<&Intersection>,
@@ -471,7 +468,7 @@ impl Point {
             .iter()
             .filter(|i| i.on_line(line))
             .fold(
-                (None, f64::INFINITY.into()),
+                (None, f64::INFINITY),
                 |(mut best, mut best_dist): (Option<Intersection>, f64), &intersection| {
                     let d = intersection.point.dist2(self);
                     if d < best_dist {
