@@ -1,3 +1,9 @@
+use i_overlay::core::fill_rule::FillRule;
+use i_overlay::core::overlay_rule::OverlayRule;
+use i_overlay::float::single::SingleFloatOverlay;
+use i_overlay::i_float::float::compatible::FloatPointCompatible;
+use i_triangle::float::triangulatable::Triangulatable;
+use i_triangle::float::triangulator::Triangulator;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::array::IntoIter;
@@ -346,410 +352,31 @@ impl Eq for Triangle {}
 impl Sub for Triangle {
     type Output = Vec<Triangle>;
     fn sub(self, other: Triangle) -> Vec<Triangle> {
-        let i = self.intersections(&other);
-        let real = i
+        let subj = [self.a, self.b, self.c];
+
+        let clip = [other.a, other.b, other.c];
+        let shapes = subj
+            .overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd)
             .iter()
-            .filter(|i| {
-                i.real
-                    && self
-                        .points()
-                        .all(|p| i.point.dist2(&p) > f64::EPSILON.into())
-            })
+            .map(|shape| shape.triangulate_as::<i64>().to_triangulation::<usize>())
             .collect::<Vec<_>>();
-        let extras = self.points().filter(|p| {
-            i.iter()
-                .any(|i| i.real && i.point.dist2(p) <= f64::EPSILON.into())
-        });
-        // let real = i.iter().filter(|i| i.real).collect::<Vec<_>>();
-        let projected = i.iter().filter(|i| i.projected).collect::<Vec<_>>();
-        let mut self_included: HashSet<Point> = std::collections::HashSet::new();
-        for point in self.points().filter(|a| other.contains(a)).chain(extras) {
-            self_included.insert(point);
-        }
-        let scount = self_included.len();
-        let mut other_included: HashSet<Point> = std::collections::HashSet::new();
-        for point in other.points().filter(|a| self.contains(a)) {
-            other_included.insert(point);
-        }
-        let ocount = other_included.len();
-        // let ocount = other.points().filter(|a| self.contains(a)).count();
-        let mut polys: Vec<ConvexPolygon> = vec![];
-        let mut points: HashMap<Point, usize> = std::collections::HashMap::new();
-        let mut shared: HashSet<Point> = std::collections::HashSet::new();
-        for point in [self.a, self.b, self.c, other.a, other.b, other.c] {
-            match points.get(&point) {
-                Some(count) => {
-                    points.insert(point, count + 1);
-                    shared.insert(point);
-                }
-                None => {
-                    points.insert(point, 1);
-                }
-            }
-        }
-        // seek the truth
-        let shared_count = shared.len();
-        if shared_count + scount < 3 && scount > 0 {
-            for line in self.lines() {
-                let intersections = real.iter().filter(|i| i.on_line(line)).count();
-                if self_included.contains(&line.b)
-                    && !self_included.contains(&line.a)
-                    && !shared.contains(&line.a)
-                    && intersections == 0
-                {
-                    self_included.remove(&line.b);
-                    shared.insert(line.b);
-                }
-                if self_included.contains(&line.a)
-                    && !self_included.contains(&line.b)
-                    && !shared.contains(&line.b)
-                    && intersections == 0
-                {
-                    self_included.remove(&line.a);
-                    shared.insert(line.a);
-                }
-            }
-        }
-        let scount = self_included.len();
-        let shared_count = shared.len();
 
-        // console::log_1(&format!("intersections: {}", real.len()).into());
-        // console::log_1(&format!("projected: {}", projected.len()).into());
-        // console::log_1(&format!("scount: {}", scount).into());
-        // console::log_1(&format!("ocount: {}", ocount).into());
-        // console::log_1(&format!("shared: {}\n", shared_count).into());
-        // JAGI
-        match (real.len(), projected.len(), scount, ocount, shared_count) {
-            (_, _, _, _, 3) => {
-                // it's the same picture
-                return vec![];
+        let mut result = vec![];
+        for shape in shapes {
+            let bleh: Vec<_> = shape.indices.iter().map(|&i| shape.points[i]).collect();
+            for points in bleh.chunks_exact(3) {
+                let [a, b, c] = points else { unreachable!() };
+                result.push(Triangle {
+                    a: *a,
+                    b: *b,
+                    c: *c,
+                });
             }
-            (_, _, 0, 3, _) => {
-                // we are getting a hole bored out of the middle oh no
-                // cursed_subtraction_debug(&self, &other, &i, false);
-            }
-            (0, 0, 2, 0, 1) | (_, _, 3, 0, _) => {
-                // we have been fully subtracted
-                return vec![];
-            }
-            (0, _, 0, _, _) => {
-                // no intersections, all good!
-                return vec![self];
-            }
-            // (0, _, 0, _, _)
-            (6, 0, 0, 0, _) => {
-                // star of david situation
-                // cursed_subtraction_debug(&self, &other, &i, false);
-            }
-            (3, _, 0, 0, 1) => {
-                let line = self
-                    .lines()
-                    .find(|line| !real.iter().any(|i| i.on_line(*line)))
-                    .unwrap();
-                let mut poly_a = ConvexPolygon(vec![line.a, line.b]);
-                let other_point = self.points().find(|&p| p != line.a && p != line.b).unwrap();
-                let intersections: Vec<_> = self
-                    .my_lines(&other_point)
-                    .into_iter()
-                    .map(|l| {
-                        real.iter()
-                            .filter(|i| i.on_line(l))
-                            .fold(
-                                (None, f64::INFINITY.into()),
-                                |(mut best, mut best_dist): (Option<Intersection>, F64),
-                                 &intersection| {
-                                    let d = intersection.point.dist2(&other_point);
-                                    if d < best_dist {
-                                        best = Some(*intersection);
-                                        best_dist = d;
-                                    }
-                                    (best, best_dist)
-                                },
-                            )
-                            .0
-                            .unwrap()
-                    })
-                    .map(|i| i.point)
-                    .collect();
-                let x = intersections[0];
-                let y = intersections[1];
-                let poly_b = ConvexPolygon(vec![other_point, x, y]);
-                let Some(z) = real.iter().find(|i| i.point != x && i.point != y) else {
-                    // this used to panic; since we can't unwind, we do this shid instead
-                    return vec![self];
-                };
-                let z = z.point;
+        }
 
-                poly_a.0.push(z);
-                polys.push(poly_a);
-                polys.push(poly_b);
-            }
-            (2, 4, 0, 2, 0) => {
-                let double_projected_line = self
-                    .lines()
-                    .find(|&l| projected.iter().filter(|i| i.on_line(l)).count() > 1)
-                    .unwrap();
-                let double_intersected_line = self
-                    .lines()
-                    .find(|&l| real.iter().filter(|i| i.on_line(l)).count() > 1)
-                    .unwrap();
-                let new_triangle_vertex = self
-                    .points()
-                    .find(|&p| {
-                        double_projected_line.has_point(p) && double_intersected_line.has_point(p)
-                    })
-                    .unwrap();
-                let tri_real =
-                    new_triangle_vertex.closest_intersection(&real, double_intersected_line);
-                let (tri_cutting_point, concave_cutting_point): (Vec<Point>, Vec<Point>) =
-                    other_included
-                        .iter()
-                        .partition(|&&p| tri_real.b.has_point(p));
-                let tri_cutting_point = tri_cutting_point[0];
-                let concave_cutting_point = concave_cutting_point[0];
-
-                let tri_proj =
-                    new_triangle_vertex.closest_intersection(&projected, double_projected_line);
-                polys.push(ConvexPolygon(vec![
-                    new_triangle_vertex,
-                    tri_real.point,
-                    tri_proj.point,
-                ]));
-                let Some(idk) = real.iter().find(|i| i.point != tri_real.point) else {
-                    // this used to panic; since we can't unwind, we do this shid instead
-                    return vec![self];
-                };
-                polys.push(ConvexPolygon(vec![
-                    concave_cutting_point,
-                    tri_cutting_point,
-                    tri_proj.point,
-                    double_projected_line.other_point(&new_triangle_vertex),
-                    double_intersected_line.other_point(&new_triangle_vertex),
-                    idk.point,
-                ]));
-            }
-            (4, _, 0, 0, _) => {
-                let (lines_with_intersections, lines_without_intersections) = self
-                    .lines()
-                    .partition::<Vec<_>, _>(|&l| real.iter().any(|&i| i.on_line(l)));
-                for l in lines_with_intersections {
-                    let on_this_line = real.iter().filter(|i| i.on_line(l)).collect::<Vec<_>>();
-                    if on_this_line.is_empty() {
-                        panic!("uh oh");
-                    }
-                    let mut points = vec![l.a];
-                    let (next, _): (Option<&Intersection>, F64) = on_this_line.iter().fold(
-                        (None, f64::INFINITY.into()),
-                        |(mut best, mut best_dist), &intersection| {
-                            let d = intersection.point.dist2(&l.a);
-                            if d < best_dist {
-                                best = Some(intersection);
-                                best_dist = d;
-                            }
-                            (best, best_dist)
-                        },
-                    );
-                    let next = next.unwrap();
-                    points.push(next.point);
-                    let l = next.other_line(l);
-                    let Some(next) = real.iter().find(|i| i.on_line(l) && i.point != next.point)
-                    else {
-                        // we tried our best
-                        break;
-                    };
-                    points.push(next.point);
-                    let l = next.other_line(l);
-                    if l.has_point(points[0]) {
-                        // done!
-                        polys.push(ConvexPolygon(points));
-                    } else {
-                        // find and add the one missing point
-                        let other_line = lines_without_intersections[0];
-                        let other_point = if other_line.a == next.point {
-                            other_line.b
-                        } else {
-                            other_line.a
-                        };
-                        points.push(other_point);
-                        polys.push(ConvexPolygon(points));
-                    }
-                }
-            }
-            (4, 0, 1, 0, _) => {
-                // cursed_subtraction_debug(&self, &other, &i, true);
-                for p in self.points().filter(|p| !self_included.contains(p)) {
-                    let edges = self.lines().filter(|l| l.has_point(p));
-                    let intersections: Vec<Intersection> = edges
-                        .map(|l| {
-                            real.iter()
-                                .filter(|i| i.on_line(l))
-                                .fold(
-                                    (None, f64::INFINITY.into()),
-                                    |(mut best, mut best_dist): (Option<Intersection>, F64),
-                                     &intersection| {
-                                        let d = intersection.point.dist2(&p);
-                                        if d < best_dist {
-                                            best = Some(*intersection);
-                                            best_dist = d;
-                                        }
-                                        (best, best_dist)
-                                    },
-                                )
-                                .0
-                                .unwrap()
-                        })
-                        .collect();
-                    polys.push(ConvexPolygon(vec![
-                        p,
-                        intersections[0].point,
-                        intersections[1].point,
-                    ]));
-                }
-            }
-            // (2, _, 0, 0, 1) | (2, _, 1, 0, _) if real[0].shares_line_with(real[1]) => {
-            //     panic!("haha");
-            // }
-            (2, _, 0, 0, 1) if !real[0].shares_line_with(real[1]) => {
-                polys.push(ConvexPolygon(
-                    real.iter()
-                        .map(|i| {
-                            (if self.lines().any(|l| l == i.a) {
-                                i.a
-                            } else {
-                                i.b
-                            })
-                            .points()
-                            .find(|p| !self_included.contains(p) && !shared.contains(p))
-                            .unwrap()
-                        })
-                        .chain(real.iter().rev().map(|i| i.point))
-                        .collect(),
-                ));
-            }
-            (2, _, 0, 0, 1) => {
-                // cursed_subtraction_debug(&self, &other, &i, false);
-                let start = shared.iter().next().unwrap();
-                for p in self.points().filter(|p| p != start) {
-                    let closest_intersection = real
-                        .iter()
-                        .fold(
-                            (None, f64::INFINITY.into()),
-                            |(mut best, mut best_dist): (Option<Intersection>, F64),
-                             &intersection| {
-                                let d = intersection.point.dist2(&p);
-                                if d < best_dist {
-                                    best = Some(*intersection);
-                                    best_dist = d;
-                                }
-                                (best, best_dist)
-                            },
-                        )
-                        .0
-                        .unwrap();
-                    polys.push(ConvexPolygon(vec![*start, p, closest_intersection.point]));
-                }
-                /*
-                let others: Vec<_> = self.points().filter(|p| p != start).collect();
-                let a = others[0];
-                let b = others[1];
-                polys.push(ConvexPolygon(vec![*start, a]));
-                polys.push(ConvexPolygon(vec![*start, b]));
-                */
-            }
-            // (2, _, 0, 2, 0) => {
-            //     polys.push(ConvexPolygon(
-            //         real.iter()
-            //             .map(|i| {
-            //                 (if self.lines().any(|l| l == i.a) {
-            //                     i.a
-            //                 } else {
-            //                     i.b
-            //                 })
-            //                 .points()
-            //                 .find(|p| !self_included.contains(p) && !shared.contains(p))
-            //                 .unwrap()
-            //             })
-            //             .chain(real.iter().rev().map(|i| i.point))
-            //             .collect(),
-            //     ));
-            // }
-            (2, _, 1, 0, _) => {
-                polys.push(ConvexPolygon(
-                    real.iter()
-                        .map(|i| {
-                            (if self.lines().any(|l| l == i.a) {
-                                i.a
-                            } else {
-                                i.b
-                            })
-                            .points()
-                            .find(|p| !self_included.contains(p) && !shared.contains(p))
-                            .unwrap()
-                        })
-                        .chain(real.iter().rev().map(|i| i.point))
-                        .collect(),
-                ));
-            }
-            (2, _, 2, 0, _) => {
-                let starting_point = self.points().find(|p| !self_included.contains(p)).unwrap();
-                polys.push(ConvexPolygon(vec![
-                    starting_point,
-                    real[0].point,
-                    real[1].point,
-                ]));
-            }
-            (1, _, 0, 1, 1) => {
-                return vec![self];
-            }
-            (2, 2, 0, 1, 0) => {
-                let contained_point = other.points().find(|p| other_included.contains(p)).unwrap();
-                let choice = real[0];
-                let dir = (real[0].point - real[1].point).normalize();
-                let a = choice
-                    .lines()
-                    .filter_map(|i| self.lines().find(|l| *l == i))
-                    .next()
-                    .unwrap();
-                let Some(ap) = a
-                    .points()
-                    .find(|p| dir.dot(&(real[0].point - *p).normalize()).signum() == -1.0)
-                else {
-                    // this used to panic; since we can't unwind, we do this shid instead
-                    return vec![self];
-                };
-                let b = self.other_line(&a, &ap);
-                let bp = b.other_point(&ap);
-                let c = self.other_line(&b, &bp);
-                let cp = c.other_point(&bp);
-                polys.push(ConvexPolygon(vec![
-                    contained_point,
-                    choice.point,
-                    ap,
-                    bp,
-                    cp,
-                    real[1].point,
-                ]));
-            }
-            (1, _, 1, 0, 1) => {
-                polys.push(ConvexPolygon(vec![
-                    real[0].point,
-                    self.points()
-                        .find(|p| !self_included.contains(p) && !shared.contains(p))
-                        .unwrap(),
-                    *shared.iter().next().unwrap(),
-                ]));
-            }
-            _ => {
-                // console::log_1(&"it matched nobody".into());
-                return vec![self];
-                // cursed_subtraction_debug(&self, &other, &i, false);
-            }
-        };
-        // cursed_subtraction_debug(&self, &other, &i, false);
-        polys
-            .iter()
-            .flat_map(|poly| poly.triangulate())
-            .filter(|tri| tri.area() > 0.0)
+        result
+            .into_iter()
+            .filter(|t| t.area() > f64::EPSILON * 10000000.0)
             .collect()
     }
 }
@@ -774,6 +401,26 @@ impl std::fmt::Debug for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Use the write! macro to format your output into the buffer `f`
         write!(f, "({:.5}, {:.5})", self.x, self.y)
+    }
+}
+
+impl FloatPointCompatible for Point {
+    type Scalar = f64;
+
+    fn from_xy(x: f64, y: f64) -> Self {
+        Self {
+            x: x.into(),
+            y: y.into(),
+            z: 0.0.into(),
+        }
+    }
+
+    fn x(&self) -> f64 {
+        self.x.into()
+    }
+
+    fn y(&self) -> f64 {
+        self.y.into()
     }
 }
 

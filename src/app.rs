@@ -158,7 +158,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../teapot.obj");
+const TEAPOT: &str = include_str!("../utah-beetle-only.obj");
 
 impl Default for AppState {
     fn default() -> Self {
@@ -646,7 +646,7 @@ impl AppState {
         }
 
         self.backface_culling();
-        self.reasonable_culling();
+        // self.reasonable_culling();
         self.partial_culling();
 
         self.bb.make_square();
