@@ -1,11 +1,13 @@
+use crate::geometry::BoundingBox;
+use raylib::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-use web_sys::{console, CanvasRenderingContext2d};
-use yew_router::Routable;
+use raylib::prelude::RaylibDrawHandle;
 
 use crate::geometry::*;
+use crate::navigator::*;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FacePart {
@@ -70,51 +72,6 @@ impl Face {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum SliceThing {
-    OneFace(usize),
-    TwoFace(usize, usize),
-}
-
-impl FromStr for SliceThing {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts = s.split(':').collect::<Vec<_>>();
-        match parts.len() {
-            1 => Ok(SliceThing::OneFace(s.parse::<usize>().map_err(|_| ())?)),
-            2 => Ok(SliceThing::TwoFace(
-                parts[0].parse::<usize>().map_err(|_| ())?,
-                parts[1].parse::<usize>().map_err(|_| ())?,
-            )),
-            _ => Err(()),
-        }
-    }
-}
-
-impl std::fmt::Display for SliceThing {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::OneFace(id) => write!(f, "{}", id),
-            Self::TwoFace(id1, id2) => write!(f, "{}:{}", id1, id2),
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Copy, Clone, Debug, Routable)]
-pub enum AppView {
-    #[at("/")]
-    Main,
-    #[at("/no-clip")]
-    NoClip,
-    #[at("/painter/:face")]
-    Painter { face: usize },
-    #[at("/slice/:face/:idx")]
-    SliceView { face: SliceThing, idx: usize },
-    #[not_found]
-    #[at("/404")]
-    NotFound,
-}
-
 pub struct DebugView {
     pub tri: Triangle,
     pub haircut: Vec<Triangle>,
@@ -123,13 +80,12 @@ pub struct DebugView {
 
 pub struct AppState {
     pub faces: Vec<Face>,
-    pub ctx: Option<CanvasRenderingContext2d>,
     pub bb: BoundingBox,
-    pub zoom: BoundingBox,
     pub edges: Vec<Line>,
     pub selected_faces: HashSet<usize>,
-    pub view: AppView,
+    pub nav: Navigator,
     pub debug_view: Option<DebugView>,
+    pub selection: Option<(Vector2, Vector2)>,
 }
 
 #[allow(dead_code)]
@@ -167,8 +123,8 @@ fn rotate(p: Point, angle: F64) -> Point {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Color {
-    Lime,
+enum ColorType {
+    Primary,
     Lhs,
     Rhs,
     Difference,
@@ -177,110 +133,149 @@ enum Color {
     Dark,
 }
 
-const TEAPOT: &str = include_str!("../utah-beetle-only.obj");
+impl ColorType {
+    pub fn fill(&self) -> Option<Color> {
+        match self {
+            ColorType::Primary => Some(Color::WHITE.alpha(0.25)),
+            ColorType::Lhs => Some(Color::WHITE.alpha(0.25)),
+            ColorType::Rhs => Some(Color::RED.alpha(0.25)),
+            ColorType::Difference => None,
+            ColorType::Selected => Some(Color::LIME.alpha(0.25)),
+            ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap().alpha(0.25)),
+            ColorType::Dark => None,
+        }
+    }
+    pub fn stroke(&self) -> Option<Color> {
+        match self {
+            ColorType::Primary => None,
+            ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
+            ColorType::Rhs => Some(Color::RED),
+            ColorType::Difference => Some(Color::BLUE),
+            ColorType::Selected => Some(Color::LIME),
+            ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap()),
+            ColorType::Dark => Some(Color::WHITE.alpha(0.1)),
+        }
+    }
+}
+
+const TEAPOT: &str = include_str!("../teapot.obj");
+
+impl Default for AppState {
+    fn default() -> Self {
+        AppState::new()
+    }
+}
 
 impl AppState {
     pub fn new() -> Self {
         AppState {
-            ctx: None,
             faces: vec![],
             bb: BoundingBox::new(),
-            zoom: BoundingBox::new(),
             edges: vec![],
+            nav: Navigator::new(),
             selected_faces: std::collections::HashSet::new(),
-            view: AppView::Main,
             debug_view: None,
+            selection: None,
         }
     }
-
-    pub fn zoom_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-        let min = self.zoom.unproject(&Point {
-            x: x1.min(x2).into(),
-            y: y1.min(y2).into(),
-            z: 0.0.into(),
-        });
-        let max = self.zoom.unproject(&Point {
-            x: x2.max(x1).into(),
-            y: y2.max(y1).into(),
-            z: 0.0.into(),
-        });
-        self.zoom = BoundingBox {
-            min,
-            max,
-            mode: BBMode::FromTopLeft,
+    pub fn update(&mut self, rl: &mut RaylibHandle) {
+        // arrow keys
+        match self.nav.current() {
+            AppView::SliceView { face, idx } => {
+                if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
+                    if idx > 0 {
+                        self.nav.push(AppView::SliceView { face, idx: idx - 1 });
+                        self.restart();
+                    }
+                } else if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
+                    self.nav.push(AppView::SliceView { face, idx: idx + 1 });
+                    self.restart();
+                }
+            }
+            _ => {}
         };
-    }
-
-    fn draw_triangle(&self, t: &Triangle, color: Color) {
-        let ctx = self.ctx.as_ref().unwrap();
-        let t = self.bb.reproject_triangle(t);
-        match color {
-            Color::Lime => {
-                ctx.set_fill_style_str("#ffffff30");
-                ctx.set_stroke_style_str("transparent");
-            }
-            Color::Lhs => {
-                ctx.set_fill_style_str("#ffffff30");
-                ctx.set_stroke_style_str("#666");
-            }
-            Color::Rhs => {
-                ctx.set_fill_style_str("#ff000030");
-                ctx.set_stroke_style_str("red");
-            }
-            Color::Difference => {
-                ctx.set_fill_style_str("transparent");
-                ctx.set_stroke_style_str("blue");
-            }
-            Color::Selected => {
-                ctx.set_fill_style_str("#00ff0030");
-                ctx.set_stroke_style_str("lime");
-            }
-            Color::Cut => {
-                ctx.set_fill_style_str("#00aaaa30");
-                ctx.set_stroke_style_str("#00aaaa");
-                ctx.set_fill_style_str("#ffffff30");
-                ctx.set_stroke_style_str("transparent");
-            }
-            Color::Dark => {
-                ctx.set_fill_style_str("transparent");
-                ctx.set_stroke_style_str("#ffffff10");
+        // mouse stuff
+        let pos = rl.get_mouse_position();
+        if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            self.selection = Some((pos, pos));
+        }
+        if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
+            self.nav.reset_zoom();
+        }
+        if rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+            if let Some(selection) = self.selection {
+                let delta = selection.1 - selection.0;
+                let dx = delta.x.abs();
+                let dy = delta.y.abs();
+                if dx < 5.0 && dy < 5.0 {
+                    self.selection = None;
+                    self.pointer_click(pos.x, pos.y);
+                    return;
+                }
+                // apply selection
+                self.nav.zoom_to(
+                    selection.0.x.into(),
+                    selection.0.y.into(),
+                    selection.1.x.into(),
+                    selection.1.y.into(),
+                );
+                self.selection = None;
             }
         }
-        ctx.begin_path();
-        let (x, y) = self.to_canvas(t.a);
-        ctx.move_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(t.b);
-        ctx.line_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(t.c);
-        ctx.line_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(t.a);
-        ctx.line_to(x.into(), y.into());
-        ctx.fill();
-        ctx.stroke();
+        if let Some(selection) = &mut self.selection {
+            selection.1 = rl.get_mouse_position();
+        } else {
+            self.pointer_move(pos.x, pos.y);
+        }
     }
 
-    fn draw_line(&self, p1: Point, p2: Point) {
-        let ctx = self.ctx.as_ref().unwrap();
-        ctx.set_stroke_style_str("red");
-        let (x, y) = self.to_canvas(p1);
-        ctx.move_to(x.into(), y.into());
-        let (x, y) = self.to_canvas(p2);
-        ctx.line_to(x.into(), y.into());
-        ctx.stroke();
+    fn draw_triangle(&self, d: &mut RaylibDrawHandle, t: &Triangle, color: ColorType) {
+        let t = self.bb.reproject_triangle(t);
+        let a = self.to_canvas(t.a);
+        let b = self.to_canvas(t.b);
+        let c = self.to_canvas(t.c);
+        let ab = a - b;
+        let ac = a - c;
+        let cross = ab.x * ac.y - ab.y * ac.x;
+        // we need to sort to clockwise
+        if let Some(fill) = color.fill() {
+            match cross.signum() {
+                -1.0 => d.draw_triangle(a, b, c, fill),
+                _ => d.draw_triangle(a, c, b, fill),
+            };
+        }
+        if let Some(stroke) = color.stroke() {
+            match cross.signum() {
+                -1.0 => d.draw_triangle_lines(a, b, c, stroke),
+                _ => d.draw_triangle_lines(a, c, b, stroke),
+            };
+        }
     }
 
-    // TODO: would be nice to refactor this to return Point
-    fn to_canvas(&self, p: Point) -> (F64, F64) {
-        let new_point = self.zoom.reproject(&Point {
+    // fn draw_line(&self, p1: Point, p2: Point) {
+    //     let ctx = self.ctx.as_ref().unwrap();
+    //     ctx.set_stroke_style_str("red");
+    //     let (x, y) = self.to_canvas(p1);
+    //     ctx.move_to(x.into(), y.into());
+    //     let (x, y) = self.to_canvas(p2);
+    //     ctx.line_to(x.into(), y.into());
+    //     ctx.stroke();
+    // }
+
+    fn to_canvas(&self, p: Point) -> Vector2 {
+        let new_point = self.nav.zoom.reproject(&Point {
             x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5),
             y: ((-p.y + 1.0) / 2.0 * 765.0),
             z: 0.0.into(),
         });
-        (new_point.x, new_point.y)
+        Vector2 {
+            x: new_point.x.into_inner() as f32,
+            y: new_point.y.into_inner() as f32,
+        }
     }
 
     fn from_canvas(&self, p: &Point) -> Point {
-        let p = self.zoom.unproject(p);
+        let p = self.nav.zoom.unproject(p);
         Point {
             x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0),
             y: (-((p.y * 2.0 / 765.0) - 1.0)),
@@ -288,30 +283,42 @@ impl AppState {
         }
     }
 
-    fn draw_point(&self, point: Point, color: &str, open: bool) {
-        println!("ctx.beginPath();");
-        println!("ctx.fillStyle = '{}';", color);
-        println!("ctx.strokeStyle = '{}';", color);
-        let (x, y) = self.to_canvas(point);
-        println!("ctx.arc(zx({}), zy({}), 5, 0, 20 * Math.PI);", x, y);
-        if open {
-            println!("ctx.stroke();");
-        } else {
-            println!("ctx.fill();");
+    // fn draw_point(&self, point: Point, color: &str, open: bool) {
+    //     println!("ctx.beginPath();");
+    //     println!("ctx.fillStyle = '{}';", color);
+    //     println!("ctx.strokeStyle = '{}';", color);
+    //     let (x, y) = self.to_canvas(point);
+    //     println!("ctx.arc(zx({}), zy({}), 5, 0, 20 * Math.PI);", x, y);
+    //     if open {
+    //         println!("ctx.stroke();");
+    //     } else {
+    //         println!("ctx.fill();");
+    //     }
+    // }
+
+    pub fn render(&self, d: &mut RaylibDrawHandle) {
+        self.clear(d);
+        let view = self.nav.current();
+        match view {
+            AppView::SliceView { .. } => self.render_debug(d),
+            _ => self.render_standard(d),
+        };
+        if let Some(selection) = self.selection {
+            let pos = selection.0;
+            let size = selection.1 - selection.0;
+            d.draw_rectangle_lines(
+                pos.x as i32,
+                pos.y as i32,
+                size.x as i32,
+                size.y as i32,
+                Color::RED,
+            );
         }
     }
 
-    pub fn render(&self) {
-        match self.view {
-            AppView::SliceView { .. } => self.render_debug(),
-            _ => self.render_standard(),
-        }
-    }
-
-    pub fn render_debug(&self) {
-        self.clear();
+    pub fn render_debug(&self, d: &mut RaylibDrawHandle) {
         let Some(debug_view) = &self.debug_view else {
-            self.render_standard();
+            self.render_standard(d);
             return;
         };
         for face in self.faces.iter() {
@@ -319,7 +326,7 @@ impl AppState {
                 continue;
             }
             for t in &face.haircut {
-                self.draw_triangle(&t, Color::Dark);
+                self.draw_triangle(d, t, ColorType::Dark);
             }
         }
         let DebugView {
@@ -327,15 +334,14 @@ impl AppState {
             haircut,
             cutter,
         } = debug_view;
-        self.draw_triangle(&tri, Color::Lhs);
-        self.draw_triangle(&cutter, Color::Rhs);
+        self.draw_triangle(d, tri, ColorType::Lhs);
+        self.draw_triangle(d, cutter, ColorType::Rhs);
         for cut in haircut {
-            self.draw_triangle(&cut, Color::Difference);
+            self.draw_triangle(d, cut, ColorType::Difference);
         }
     }
 
-    pub fn render_standard(&self) {
-        self.clear();
+    pub fn render_standard(&self, d: &mut RaylibDrawHandle) {
         for face in self.faces.iter() {
             if face.culled {
                 continue;
@@ -345,44 +351,31 @@ impl AppState {
             // }
 
             for t in &face.haircut {
-                // if t.color == Color::Lime {
+                // if t.color == ColorType::Primary {
                 //     continue;
                 // }
                 if self.selected_faces.contains(&face.id) {
-                    self.draw_triangle(&t, Color::Selected);
+                    self.draw_triangle(d, t, ColorType::Selected);
                 } else {
-                    self.draw_triangle(
-                        &t,
-                        match face.haircut.len() {
-                            1 => Color::Lime,
-                            _ => Color::Cut,
-                        },
-                    );
+                    self.draw_triangle(d, t, ColorType::Primary);
+
+                    // self.draw_triangle(
+                    //     &t,
+                    //     match face.haircut.len() {
+                    //         1 => ColorType::Primary,
+                    //         _ => ColorType::Cut,
+                    //     },
+                    // );
                 }
             }
         }
-        for &edge in self.edges.iter() {
-            self.draw_line(edge.a, edge.b);
-        }
+        // for &edge in self.edges.iter() {
+        //     self.draw_line(edge.a, edge.b);
+        // }
     }
 
-    pub fn clear(&self) {
-        let ctx = self.ctx.as_ref().unwrap();
-        ctx.set_line_width(1.0);
-        ctx.clear_rect(
-            0.0,
-            0.0,
-            ctx.canvas().unwrap().width() as f64,
-            ctx.canvas().unwrap().height() as f64,
-        );
-        ctx.set_fill_style_str("black");
-        ctx.fill_rect(
-            0.0,
-            0.0,
-            ctx.canvas().unwrap().width() as f64,
-            ctx.canvas().unwrap().height() as f64,
-        );
-        ctx.set_fill_style_str("#ffffff30");
+    pub fn clear(&self, d: &mut RaylibDrawHandle) {
+        d.clear_background(Color::BLACK);
     }
 
     pub fn find_edges(&mut self) {
@@ -416,25 +409,41 @@ impl AppState {
             .collect();
     }
 
-    pub fn reset_zoom(&mut self) {
-        self.zoom = BoundingBox::new();
-        self.zoom.mode = BBMode::FromTopLeft;
-        self.zoom.expand(&Point {
-            x: 0.0.into(),
-            y: 0.0.into(),
-            z: 0.0.into(),
-        });
-        self.zoom.expand(&Point {
-            x: 1030.0.into(),
-            y: 765.0.into(),
-            z: 0.0.into(),
-        });
+    pub fn pointer_click(&mut self, x: f32, y: f32) {
+        println!("Clicked: {:?}", self.selected_faces);
+        let faces: Vec<_> = self.selected_faces.iter().take(2).collect();
+        match self.nav.current() {
+            AppView::Painter { .. } | AppView::SliceView { .. } => match faces.len() {
+                1 => {
+                    self.nav.push(AppView::SliceView {
+                        face: SliceThing::OneFace(*faces[0]),
+                        idx: 1,
+                    });
+                    self.restart();
+                }
+                2 => {
+                    self.nav.push(AppView::SliceView {
+                        face: SliceThing::TwoFace(*faces[1], *faces[0]),
+                        idx: 1,
+                    });
+                    self.restart();
+                }
+                _ => (),
+            },
+            AppView::Main if !faces.is_empty() => {
+                self.nav.push(AppView::Painter {
+                    face: *faces.into_iter().last().unwrap(),
+                });
+                self.restart();
+            }
+            _ => (),
+        };
     }
 
-    pub fn move_pointer(&mut self, x: i32, y: i32) {
+    pub fn pointer_move(&mut self, x: f32, y: f32) {
         let p = Point {
-            x: x.into(),
-            y: y.into(),
+            x: (x as f64).into(),
+            y: (y as f64).into(),
             z: 0.0.into(),
         };
         let p = self.from_canvas(&p);
@@ -456,11 +465,7 @@ impl AppState {
             }
         }
         if !dirty && !self.selected_faces.is_empty() {
-            dirty = true;
             self.selected_faces.clear();
-        }
-        if dirty {
-            self.render();
         }
     }
 
@@ -506,8 +511,9 @@ impl AppState {
         }
     }
     pub fn partial_culling(&mut self) {
+        let view = self.nav.current();
         let mut drawn: Vec<&mut Face> = vec![];
-        let (view_face, cutter_face, view_cut_idx) = match self.view {
+        let (view_face, cutter_face, view_cut_idx) = match view {
             AppView::SliceView { face, idx } => match face {
                 SliceThing::OneFace(fid) => (fid, fid, idx),
                 SliceThing::TwoFace(f1, f2) => (f1, f2, idx),
@@ -520,10 +526,10 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            if let AppView::Painter { face } = self.view {
+            if let AppView::Painter { face } = view {
                 // TODO: check face IDs?
                 if i > face {
-                    console::log_1(&format!("breaking cuz {} > {}", i, face).into());
+                    // console::log_1(&format!("breaking cuz {} > {}", i, face).into());
                     break;
                 }
             }
@@ -560,15 +566,14 @@ impl AppState {
             }
             drawn.push(face);
         }
-        if let AppView::Painter { .. } = self.view {
+        if let AppView::Painter { .. } = view {
             // if debug.is_some() {
             self.faces = drawn.into_iter().map(|d| d.clone()).collect();
         }
     }
 
     pub fn restart(&mut self) {
-        console::log_1(&format!("view: {:?}", self.view).into());
-        self.clear();
+        // console::log_1(&format!("view: {:?}", self.view).into());
         self.edges.clear();
         self.faces.clear();
         self.debug_view = None;
@@ -641,20 +646,10 @@ impl AppState {
         }
 
         self.backface_culling();
-        // self.reasonable_culling();
-        match self.view {
-            AppView::NoClip => {}
-            _ => {
-                self.partial_culling();
-            }
-        };
+        self.reasonable_culling();
+        self.partial_culling();
 
         self.bb.make_square();
         self.find_edges();
-    }
-
-    pub fn start(&mut self, ctx: CanvasRenderingContext2d) {
-        self.ctx = Some(ctx);
-        self.reset_zoom();
     }
 }

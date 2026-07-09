@@ -1,9 +1,9 @@
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use std::array::IntoIter;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
-use web_sys::console;
 
 pub type F64 = OrderedFloat<f64>;
 
@@ -219,13 +219,13 @@ impl ConvexPolygon {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum BBMode {
     FromCenter,
     FromTopLeft,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct BoundingBox {
     pub min: Point,
     pub max: Point,
@@ -740,7 +740,7 @@ impl Sub for Triangle {
                 ]));
             }
             _ => {
-                console::log_1(&"it matched nobody".into());
+                // console::log_1(&"it matched nobody".into());
                 return vec![self];
                 // cursed_subtraction_debug(&self, &other, &i, false);
             }
@@ -754,11 +754,20 @@ impl Sub for Triangle {
     }
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Point {
     pub x: F64,
     pub y: F64,
     pub z: F64,
+}
+
+impl From<Point> for raylib::ffi::Vector2 {
+    fn from(item: Point) -> Self {
+        raylib::ffi::Vector2 {
+            x: item.x.into_inner() as f32,
+            y: item.y.into_inner() as f32,
+        }
+    }
 }
 
 impl std::fmt::Debug for Point {
