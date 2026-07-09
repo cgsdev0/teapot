@@ -81,7 +81,6 @@ pub struct DebugView {
 pub struct AppState {
     pub faces: Vec<Face>,
     pub bb: BoundingBox,
-    pub zoom: BoundingBox,
     pub edges: Vec<Line>,
     pub selected_faces: HashSet<usize>,
     pub nav: Navigator,
@@ -163,18 +162,15 @@ const TEAPOT: &str = include_str!("../teapot.obj");
 
 impl AppState {
     pub fn new() -> Self {
-        let mut app = AppState {
+        AppState {
             faces: vec![],
             bb: BoundingBox::new(),
-            zoom: BoundingBox::new(),
             edges: vec![],
             nav: Navigator::new(),
             selected_faces: std::collections::HashSet::new(),
             debug_view: None,
             selection: None,
-        };
-        app.reset_zoom();
-        app
+        }
     }
     pub fn update(&mut self, rl: &mut RaylibHandle) {
         let pos = rl.get_mouse_position();
@@ -182,7 +178,7 @@ impl AppState {
             self.selection = Some((pos, pos));
         }
         if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
-            self.reset_zoom();
+            self.nav.reset_zoom();
         }
         if rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
             if let Some(selection) = self.selection {
@@ -191,11 +187,12 @@ impl AppState {
                 let dy = delta.y.abs();
                 if dx < 5.0 && dy < 5.0 {
                     // TODO: this is a click
+                    self.nav.push(AppView::Main);
                     self.selection = None;
                     return;
                 }
                 // apply selection
-                self.zoom_to(
+                self.nav.zoom_to(
                     selection.0.x.into(),
                     selection.0.y.into(),
                     selection.1.x.into(),
@@ -209,24 +206,6 @@ impl AppState {
         } else {
             self.move_pointer(pos.x, pos.y);
         }
-    }
-
-    pub fn zoom_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-        let min = self.zoom.unproject(&Point {
-            x: x1.min(x2).into(),
-            y: y1.min(y2).into(),
-            z: 0.0.into(),
-        });
-        let max = self.zoom.unproject(&Point {
-            x: x2.max(x1).into(),
-            y: y2.max(y1).into(),
-            z: 0.0.into(),
-        });
-        self.zoom = BoundingBox {
-            min,
-            max,
-            mode: BBMode::FromTopLeft,
-        };
     }
 
     fn draw_triangle(&self, d: &mut RaylibDrawHandle, t: &Triangle, color: ColorType) {
@@ -263,7 +242,7 @@ impl AppState {
     // }
 
     fn to_canvas(&self, p: Point) -> Vector2 {
-        let new_point = self.zoom.reproject(&Point {
+        let new_point = self.nav.zoom.reproject(&Point {
             x: ((p.x + 1.0) / 2.0 * 765.0 + 132.5),
             y: ((-p.y + 1.0) / 2.0 * 765.0),
             z: 0.0.into(),
@@ -275,7 +254,7 @@ impl AppState {
     }
 
     fn from_canvas(&self, p: &Point) -> Point {
-        let p = self.zoom.unproject(p);
+        let p = self.nav.zoom.unproject(p);
         Point {
             x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0),
             y: (-((p.y * 2.0 / 765.0) - 1.0)),
@@ -298,8 +277,8 @@ impl AppState {
 
     pub fn render(&self, d: &mut RaylibDrawHandle) {
         self.clear(d);
-        let state = self.nav.current();
-        match state.route {
+        let view = self.nav.current();
+        match view {
             // AppView::SliceView { .. } => self.render_debug(d),
             _ => self.render_standard(d),
         };
@@ -409,21 +388,6 @@ impl AppState {
             .collect();
     }
 
-    pub fn reset_zoom(&mut self) {
-        self.zoom = BoundingBox::new();
-        self.zoom.mode = BBMode::FromTopLeft;
-        self.zoom.expand(&Point {
-            x: 0.0.into(),
-            y: 0.0.into(),
-            z: 0.0.into(),
-        });
-        self.zoom.expand(&Point {
-            x: 1030.0.into(),
-            y: 765.0.into(),
-            z: 0.0.into(),
-        });
-    }
-
     pub fn move_pointer(&mut self, x: f32, y: f32) {
         let p = Point {
             x: (x as f64).into(),
@@ -495,9 +459,9 @@ impl AppState {
         }
     }
     pub fn partial_culling(&mut self) {
-        let state = self.nav.current();
+        let view = self.nav.current();
         let mut drawn: Vec<&mut Face> = vec![];
-        let (view_face, cutter_face, view_cut_idx) = match state.route {
+        let (view_face, cutter_face, view_cut_idx) = match view {
             AppView::SliceView { face, idx } => match face {
                 SliceThing::OneFace(fid) => (fid, fid, idx),
                 SliceThing::TwoFace(f1, f2) => (f1, f2, idx),
@@ -510,7 +474,7 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            if let AppView::Painter { face } = state.route {
+            if let AppView::Painter { face } = view {
                 // TODO: check face IDs?
                 if i > face {
                     // console::log_1(&format!("breaking cuz {} > {}", i, face).into());
@@ -550,7 +514,7 @@ impl AppState {
             }
             drawn.push(face);
         }
-        if let AppView::Painter { .. } = self.nav.current().route {
+        if let AppView::Painter { .. } = view {
             // if debug.is_some() {
             self.faces = drawn.into_iter().map(|d| d.clone()).collect();
         }

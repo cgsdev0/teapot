@@ -2,3 +2,4 @@
 target/
 main.js
 dist/
+nav_state.json
