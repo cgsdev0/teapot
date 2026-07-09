@@ -158,7 +158,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../bunny.obj");
+const TEAPOT: &str = include_str!("../duck.obj");
 
 impl Default for AppState {
     fn default() -> Self {
@@ -229,7 +229,10 @@ impl AppState {
         }
     }
 
-    fn draw_triangle(&self, d: &mut RaylibDrawHandle, t: &Triangle, color: ColorType) {
+    fn draw_triangle(&self, d: &mut Option<&mut RaylibDrawHandle>, t: &Triangle, color: ColorType) {
+        let Some(d) = d else {
+            return;
+        };
         let t = self.bb.reproject_triangle(t);
         let a = self.to_canvas(t.a);
         let b = self.to_canvas(t.b);
@@ -252,15 +255,30 @@ impl AppState {
         }
     }
 
-    // fn draw_line(&self, p1: Point, p2: Point) {
-    //     let ctx = self.ctx.as_ref().unwrap();
-    //     ctx.set_stroke_style_str("red");
-    //     let (x, y) = self.to_canvas(p1);
-    //     ctx.move_to(x.into(), y.into());
-    //     let (x, y) = self.to_canvas(p2);
-    //     ctx.line_to(x.into(), y.into());
-    //     ctx.stroke();
-    // }
+    fn draw_line(&self, d: &mut Option<&mut RaylibDrawHandle>, p1: Point, p2: Point) {
+        let Some(d) = d else {
+            let (x, y) = self.to_paper(p1);
+            println!("PU {},{};", x, y);
+            let (x, y) = self.to_paper(p2);
+            println!("PD {},{};", x, y);
+            return;
+        };
+        let p1 = self.to_canvas(p1);
+        let p2 = self.to_canvas(p2);
+        d.draw_line_v(p1, p2, Color::RED);
+    }
+
+    fn to_paper(&self, p: Point) -> (i32, i32) {
+        let new_point = self.nav.zoom.reproject(&Point {
+            x: ((p.x + 1.0) / 2.0 * 7650.0 + 1325.0),
+            y: ((-p.y + 1.0) / 2.0 * 7650.0),
+            z: 0.0.into(),
+        });
+        (
+            new_point.x.into_inner() as i32,
+            new_point.y.into_inner() as i32,
+        )
+    }
 
     fn to_canvas(&self, p: Point) -> Vector2 {
         let new_point = self.nav.zoom.reproject(&Point {
@@ -296,7 +314,7 @@ impl AppState {
     //     }
     // }
 
-    pub fn render(&self, d: &mut RaylibDrawHandle) {
+    pub fn render(&self, d: &mut Option<&mut RaylibDrawHandle>) {
         self.clear(d);
         let view = self.nav.current();
         match view {
@@ -306,17 +324,19 @@ impl AppState {
         if let Some(selection) = self.selection {
             let pos = selection.0;
             let size = selection.1 - selection.0;
-            d.draw_rectangle_lines(
-                pos.x as i32,
-                pos.y as i32,
-                size.x as i32,
-                size.y as i32,
-                Color::RED,
-            );
+            if let Some(d) = d {
+                d.draw_rectangle_lines(
+                    pos.x as i32,
+                    pos.y as i32,
+                    size.x as i32,
+                    size.y as i32,
+                    Color::RED,
+                );
+            }
         }
     }
 
-    pub fn render_debug(&self, d: &mut RaylibDrawHandle) {
+    pub fn render_debug(&self, d: &mut Option<&mut RaylibDrawHandle>) {
         let Some(debug_view) = &self.debug_view else {
             self.render_standard(d);
             return;
@@ -341,7 +361,7 @@ impl AppState {
         }
     }
 
-    pub fn render_standard(&self, d: &mut RaylibDrawHandle) {
+    pub fn render_standard(&self, d: &mut Option<&mut RaylibDrawHandle>) {
         for face in self.faces.iter() {
             if face.culled {
                 continue;
@@ -357,7 +377,14 @@ impl AppState {
                 if self.selected_faces.contains(&face.id) {
                     self.draw_triangle(d, t, ColorType::Selected);
                 } else {
-                    self.draw_triangle(d, t, ColorType::Primary);
+                    self.draw_triangle(
+                        d,
+                        t,
+                        match face.haircut.len() {
+                            1 => ColorType::Primary,
+                            _ => ColorType::Primary,
+                        },
+                    );
 
                     // self.draw_triangle(
                     //     &t,
@@ -370,11 +397,14 @@ impl AppState {
             }
         }
         // for &edge in self.edges.iter() {
-        //     self.draw_line(edge.a, edge.b);
+        //     self.draw_line(d, edge.a, edge.b);
         // }
     }
 
-    pub fn clear(&self, d: &mut RaylibDrawHandle) {
+    pub fn clear(&self, d: &mut Option<&mut RaylibDrawHandle>) {
+        let Some(d) = d else {
+            return;
+        };
         d.clear_background(Color::BLACK);
     }
 

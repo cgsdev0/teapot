@@ -334,6 +334,13 @@ impl BoundingBox {
             c: self.reproject(&tri.c),
         }
     }
+
+    pub fn add_padding(&mut self, h: f64, v: f64) {
+        self.min.x -= h / 2.0;
+        self.min.y -= v / 2.0;
+        self.max.x += h / 2.0;
+        self.max.y += v / 2.0;
+    }
     // fn draw(&self) {
     //     let (x1, y1) = canvas(self.min);
     //     let (x2, y2) = canvas(self.max);
