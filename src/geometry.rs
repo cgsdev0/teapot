@@ -431,6 +431,16 @@ impl FloatPointCompatible for Point {
     }
 }
 
+impl Mul<Point> for f64 {
+    type Output = Point;
+    fn mul(self, other: Point) -> Point {
+        Point {
+            x: other.x * self,
+            y: other.y * self,
+            z: other.z * self,
+        }
+    }
+}
 impl Point {
     pub fn normalize(&self) -> Point {
         let mag = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();

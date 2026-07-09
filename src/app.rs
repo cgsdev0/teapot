@@ -1,7 +1,9 @@
 use crate::geometry::BoundingBox;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
+use i_overlay::float::clip::FloatClip;
 use i_overlay::float::single::SingleFloatOverlay;
+use i_overlay::string::clip::ClipRule;
 use itertools::Itertools;
 use raylib::prelude::*;
 use std::collections::HashSet;
@@ -43,7 +45,65 @@ impl Ord for Face {
     }
 }
 
+pub struct Plane {
+    pub point: Point,
+    pub offset: f64,
+}
+
+impl Point {
+    pub fn dist_from_plane(&self, plane: &Plane) -> f64 {
+        self.dot(&plane.point) + plane.offset
+    }
+}
+
+impl Line {
+    pub fn plane_intersection(&self, plane: &Plane) -> Vec<Point> {
+        let mut result = vec![];
+        let ad = self.a.dist_from_plane(plane);
+        let bd = self.b.dist_from_plane(plane);
+
+        let a_on_plane = ad.abs() <= f64::EPSILON;
+        let b_on_plane = bd.abs() <= f64::EPSILON;
+
+        if a_on_plane {
+            result.push(self.a);
+        }
+        if b_on_plane {
+            result.push(self.b);
+        }
+        if a_on_plane && b_on_plane {
+            return result;
+        }
+        if ad * bd >= f64::EPSILON {
+            return result;
+        }
+        let t = ad / (ad - bd);
+        result.push(self.a + t * (self.b - self.a));
+        result
+    }
+}
+
+impl Triangle {
+    pub fn plane_intersection(&self, plane: &Plane) -> Vec<Point> {
+        let mut result = vec![];
+        for line in self.lines() {
+            let mut i = line.plane_intersection(plane);
+            result.append(&mut i);
+        }
+        result.sort_unstable();
+        result.dedup();
+        result
+    }
+}
+
 impl Face {
+    pub fn as_triangle(&self) -> Triangle {
+        Triangle {
+            a: self.eyes.vertex,
+            b: self.noes.vertex,
+            c: self.ears.vertex,
+        }
+    }
     pub fn calc_centroid(&self) -> Point {
         let a = self.eyes.vertex;
         let b = self.noes.vertex;
@@ -190,7 +250,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../models/pi_case.obj");
+const TEAPOT: &str = include_str!("../models/teapot.obj");
 
 impl Default for AppState {
     fn default() -> Self {
@@ -372,7 +432,7 @@ impl AppState {
         self.clear(d);
         let view = self.nav.current();
         match view {
-            AppView::SliceView { .. } => self.render_debug(d),
+            // AppView::SliceView { .. } => self.render_debug(d),
             _ => self.render_standard(d),
         };
         if let Some(selection) = self.selection {
@@ -437,8 +497,8 @@ impl AppState {
                         d,
                         t,
                         match face.haircut.len() {
-                            1 => ColorType::Primary,
-                            _ => ColorType::Cut,
+                            _ => ColorType::Primary,
+                            // _ => ColorType::Cut,
                         },
                     );
                 }
@@ -697,9 +757,10 @@ impl AppState {
         self.partial_culling();
 
         self.bb.make_square();
-        self.find_edges();
+        self.edges.clear();
+        self.find_contours();
     }
-    pub fn find_edges(&mut self) {
+    pub fn find_contours(&mut self) {
         let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
         for face in self.faces.iter() {
             let t = face.hair;
@@ -707,10 +768,48 @@ impl AppState {
             let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
             subj = result;
         }
-        for shape in subj {
-            for contour in shape {
-                for [a, b] in contour.iter().circular_array_windows::<2>() {
-                    self.edges.push(Line { a: *a, b: *b });
+        for i in 0..=100 {
+            let z = (i as f64) / 20.0 - 2.0;
+            let plane = Plane {
+                point: Point {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                offset: z,
+            };
+            for face in self.faces.iter() {
+                if face.culled {
+                    continue;
+                }
+                let clip_rule = ClipRule {
+                    invert: false,
+                    boundary_included: false,
+                };
+                let res = face.as_triangle().plane_intersection(&plane);
+                match res.len() {
+                    0 => {}
+                    1 => {}
+                    2 => {
+                        let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
+                        // join the haircut into a clip mask
+                        for t in face.haircut.iter() {
+                            let clip = [t.a, t.b, t.c];
+                            let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
+                            subj = result;
+                        }
+                        let line = [project(res[0]), project(res[1])];
+                        for shape in subj {
+                            let result = line.clip_by(&shape, FillRule::NonZero, clip_rule);
+                            for line in result {
+                                self.edges.push(Line {
+                                    a: line[0],
+                                    b: line[1],
+                                });
+                            }
+                        }
+                    }
+                    _ => unimplemented!("wtf"),
                 }
             }
         }
