@@ -1,7 +1,6 @@
 use crate::geometry::BoundingBox;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::float::clip::FloatClip;
-use i_overlay::float::simplify::SimplifyShape;
 use i_overlay::string::clip::ClipRule;
 use i_overlay::core::overlay_rule::OverlayRule;
 use i_overlay::float::single::SingleFloatOverlay;
@@ -68,11 +67,15 @@ impl Face {
         }
         .normalize()
     }
+    // TODO:
+    // - slice model with planes perpendicular to light sources
+    // - save resulting lines by octave
+    // - for each face, draw some, all, or no lines depending on dot product
     pub fn hatch(&self, light: &Point) -> Vec<Line> {
         let normal = self.calc_normal();
         let dot = light.dot(&normal);
-        let dot = dot * dot;
-        let density = (1.0 - dot) * 60.0;
+        // let dot = dot * dot * dot;
+        let density = (1.0 - dot) * 1600.0;
         // let color = ColorType::Shaded(l);
         let proj_normal = project(normal - (*light * 1.9)).normalize();
         let mut bb = BoundingBox::new();
@@ -217,7 +220,7 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../models/teapot.obj");
+const TEAPOT: &str = include_str!("../models/bunny.obj");
 
 impl Default for AppState {
     fn default() -> Self {
@@ -339,14 +342,17 @@ impl AppState {
         let p1 = self.bb.reproject(&p1);
         let p2 = self.bb.reproject(&p2);
         let Some(d) = d else {
-            let pen = color.pen();
-            println!("SP{};", pen);
+            // let pen = color.pen();
+            // println!("SP{};", pen);
             let (x, y) = self.to_paper(p1);
             println!("PU {},{};", x, y);
             let (x, y) = self.to_paper(p2);
             println!("PD {},{};", x, y);
             return;
         };
+        if p1.dist2(&p2) < 0.00001 {
+            return;
+        }
         let p1 = self.to_canvas(p1);
         let p2 = self.to_canvas(p2);
         d.draw_blend_mode(BlendMode::BLEND_MULTIPLIED, |mut m| {
@@ -449,7 +455,7 @@ impl AppState {
             (ColorType::Pink, Point {
                 x: -2.0,
                 y: -3.0,
-                z: 2.6,
+                z: 1.9,
             }.normalize()),
             (ColorType::Blue, Point {
                 x: 0.2,
@@ -457,16 +463,18 @@ impl AppState {
                 z: 2.0,
             }.normalize())
         ];
-        for face in self.faces.iter() {
-            if face.culled {
-                continue;
-            }
-            for (color, light) in lights {
+        for (color, light) in lights {
+            println!("SP{};", color.pen());
+            for face in self.faces.iter() {
+                if face.culled {
+                    continue;
+                }
                 for line in face.hatch(&light) {
                     self.draw_line(d, line.a, line.b, color);
                 }
             }
         }
+        println!("SP{};", ColorType::Black.pen());
         for edge in self.edges.iter() {
             for cut_line in &edge.cut {
                 self.draw_line(d, cut_line.a, cut_line.b, ColorType::Black);
@@ -482,7 +490,7 @@ impl AppState {
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
-        println!("Clicked: {:?}", self.selected_faces);
+        eprintln!("Clicked: {:?}", self.selected_faces);
         let faces: Vec<_> = self.selected_faces.iter().take(2).collect();
         match self.nav.current() {
             AppView::Painter { .. } | AppView::SliceView { .. } => match faces.len() {
@@ -542,14 +550,17 @@ impl AppState {
     }
 
     pub fn backface_culling(&mut self) {
+        let mut cull_count = 0;
         for face in self.faces.iter_mut() {
             let n = face.calc_normal();
             let c = face.calc_centroid().normalize();
             let which_way = n.dot(&c);
             if which_way <= 0.0 {
                 face.culled = true;
+                cull_count += 1;
             }
         }
+        eprintln!("culled {} backfaces", cull_count);
         for comb in self.faces.iter().combinations(2) {
             if comb[0].culled == comb[1].culled {
                 continue;
@@ -567,11 +578,13 @@ impl AppState {
                 cut: vec![],
             });
         }
+        eprintln!("found {} edges", self.edges.len());
     }
 
     pub fn partial_culling(&mut self) {
         // it's time to split hairs
         let mut drawn: Vec<Vec<Vec<Point>>> = vec![vec![]];
+        let mut face_count = 0;
         for face in self.faces.iter_mut() {
             if face.culled {
                 continue;
@@ -597,8 +610,11 @@ impl AppState {
                     });
                 face_edge.cut = cut.into_iter().map(|l| Line { a: l[0], b: l[1] }).collect();
             }
-            drawn.push(vec![hair_clip]);
-            drawn = drawn.simplify_shape(FillRule::EvenOdd);
+            // drawn.push(vec![hair_clip]);
+            // drawn = drawn.simplify_shape(FillRule::EvenOdd);
+            drawn = hair_clip.overlay(&drawn, OverlayRule::Union, FillRule::EvenOdd);
+            face_count += 1;
+            eprintln!("processed {} faces", face_count);
         }
     }
 
@@ -609,7 +625,7 @@ impl AppState {
         self.debug_view = None;
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
-        let theta_y: f64 = std::f64::consts::PI / 2.0 * 1.1;
+        let theta_y: f64 = std::f64::consts::PI / 2.0 * 1.3;
         let theta_x: f64 = std::f64::consts::PI / 2.0 * 0.1;
         for line in TEAPOT.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
@@ -670,6 +686,8 @@ impl AppState {
             }
         }
         // let frame = 6;
+
+        eprintln!("parsed {} faces, {} vertices, and {} normals", self.faces.len(), v.len(), vn.len());
 
         let _count = 0;
         self.faces.sort();
