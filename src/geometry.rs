@@ -7,6 +7,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::array::IntoIter;
 use std::ops::{Add, Mul, Sub};
+use std::hash::{Hash, Hasher};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Line {
@@ -21,7 +22,7 @@ impl PartialEq for Line {
 }
 
 impl Eq for Line {}
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Intersection {
     pub a: Line,
     pub b: Line,
@@ -45,6 +46,18 @@ impl Intersection {
             self.b
         } else {
             self.a
+        }
+    }
+}
+
+impl Hash for Line {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        if self.a <= self.b {
+            self.a.hash(state);
+            self.b.hash(state);
+        } else {
+            self.b.hash(state);
+            self.a.hash(state);
         }
     }
 }
@@ -135,6 +148,9 @@ impl Triangle {
             },
         ]
         .into_iter()
+    }
+    pub fn has_line(&self, line: Line) -> bool {
+        self.lines().any(|l| l == line)
     }
     pub fn my_lines(&self, point: &Point) -> Vec<Line> {
         self.lines().filter(|l| l.has_point(*point)).collect()
@@ -480,6 +496,38 @@ impl Point {
             )
             .0
             .unwrap()
+    }
+
+    pub fn rotate_y(&self, angle: f64) -> Point {
+        let c = angle.cos();
+        let s = angle.sin();
+        Point {
+            x: self.x * c - self.z * s,
+            z: self.x * s + self.z * c,
+            y: self.y,
+        }
+    }
+
+    pub fn rotate_x(&self, angle: f64) -> Point {
+        let c = angle.cos();
+        let s = -angle.sin();
+        Point {
+            x: self.x,
+            z: self.y * s + self.z * c,
+            y: self.y * c - self.z * s,
+        }
+    }
+
+}
+
+impl Hash for Point {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let x: OrderedFloat<f64> = self.x.into();
+        let y: OrderedFloat<f64> = self.x.into();
+        let z: OrderedFloat<f64> = self.x.into();
+        x.hash(state);
+        y.hash(state);
+        z.hash(state);
     }
 }
 
