@@ -2,7 +2,7 @@ use raylib::prelude::*;
 
 use crate::geometry::Point;
 
-trait Renderer {
+pub trait Renderer {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType);
     fn with_raylib(&mut self, _f: &mut dyn FnMut(&mut RaylibDrawHandle)) {}
 }
@@ -14,7 +14,7 @@ pub struct RaylibRenderer<'a> {
 impl<'a> Renderer for RaylibRenderer<'a> {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType) {
         if let Some(color) = color.stroke() {
-            self.d.draw_line_v(*p1, *p2, color);
+            self.d.draw_line_v(to_canvas(p1), to_canvas(p2), color);
         }
     }
     fn with_raylib(&mut self, f: &mut dyn FnMut(&mut RaylibDrawHandle)) {
@@ -39,6 +39,18 @@ fn to_paper(p: &Point) -> (i32, i32) {
         z: 0.0,
     };
     (new_point.x as i32, new_point.y as i32)
+}
+
+fn to_canvas(p: &Point) -> Vector2 {
+    let new_point = &Point {
+        x: ((-p.x + 1.0) / 2.0 * 765.0 + 132.5),
+        y: ((-p.y + 1.0) / 2.0 * 765.0),
+        z: 0.0,
+    };
+    Vector2 {
+        x: new_point.x as f32,
+        y: new_point.y as f32,
+    }
 }
 
 impl Renderer for HpglRenderer {
@@ -66,33 +78,36 @@ pub enum ColorType {
     Selected,
     Cut,
     Dark,
+    Pink,
+    Blue,
+    Black,
     Shaded(u8),
 }
 
 impl ColorType {
     pub fn pen(&self) -> usize {
         match self {
-            ColorType::Rhs => 6,
-            ColorType::Cut => 7,
+            // TODO
+            ColorType::Black => 5,
+            ColorType::Rhs | ColorType::Pink => 6,
+            ColorType::Cut | ColorType::Blue => 7,
             _ => 0,
         }
     }
     pub fn fill(&self) -> Option<Color> {
-        return None;
         match self {
             ColorType::Primary => Some(Color::WHITE.alpha(0.25)),
             ColorType::Lhs => Some(Color::WHITE.alpha(0.25)),
             ColorType::Rhs => Some(Color::RED.alpha(0.25)),
-            ColorType::Difference => None,
             ColorType::Selected => Some(Color::LIME.alpha(0.25)),
             ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap().alpha(0.25)),
-            ColorType::Dark => None,
             ColorType::Shaded(val) => Some(Color {
                 r: *val,
                 g: *val,
                 b: *val,
                 a: 255,
             }),
+            _ => None,
         }
     }
     pub fn stroke(&self) -> Option<Color> {
@@ -103,6 +118,9 @@ impl ColorType {
             ColorType::Selected => Some(Color::LIME),
             ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap()),
             ColorType::Dark => Some(Color::WHITE.alpha(0.1)),
+            ColorType::Pink => Some(Color::from_hex("ff3388").unwrap()),
+            ColorType::Blue => Some(Color::from_hex("0099ff").unwrap()),
+            ColorType::Black => Some(Color::from_hex("333333").unwrap()),
             _ => None,
         }
     }

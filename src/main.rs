@@ -13,24 +13,19 @@ pub mod geometry;
 pub mod navigator;
 pub mod renderer;
 
-use crate::app::*;
+use crate::{app::*, renderer::RaylibRenderer};
 
 fn main() {
     let mut app = AppState::new();
     app.restart();
     let args = Args::parse();
-    let mut renderer: Option<&mut RaylibDrawHandle> = None;
     app.nav.zoom.add_padding(100.0, 100.0);
-    if args.hpgl {
-        app.render(&mut renderer);
-    } else {
-        let (mut rl, thread) = raylib::init().size(1030, 765).title("Hello, World").build();
+    let (mut rl, thread) = raylib::init().size(1030, 765).title("Teaplot").build();
 
-        while !rl.window_should_close() {
-            app.update(&mut rl);
-            let mut d = rl.begin_drawing(&thread);
-            renderer = Some(&mut d);
-            app.render(&mut renderer);
-        }
+    while !rl.window_should_close() {
+        app.update(&mut rl);
+        let d = rl.begin_drawing(&thread);
+        let mut r = RaylibRenderer { d };
+        app.render(&mut r);
     }
 }

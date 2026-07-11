@@ -1,12 +1,12 @@
 use crate::geometry::BoundingBox;
 use crate::renderer::ColorType;
 use i_overlay::core::fill_rule::FillRule;
-use i_overlay::float::clip::FloatClip;
-use i_overlay::string::clip::ClipRule;
 use i_overlay::core::overlay_rule::OverlayRule;
+use i_overlay::float::clip::FloatClip;
 use i_overlay::float::single::SingleFloatOverlay;
-use itertools::Itertools;
+use i_overlay::string::clip::ClipRule;
 use i_triangle::float::triangulatable::Triangulatable;
+use itertools::Itertools;
 use raylib::prelude::*;
 use std::collections::HashSet;
 
@@ -14,8 +14,9 @@ use raylib::prelude::RaylibDrawHandle;
 
 use crate::geometry::*;
 use crate::navigator::*;
+use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/bunny.obj");
+const TEAPOT: &str = include_str!("../models/teapot.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -146,33 +147,61 @@ impl Face {
         let mut lines: Vec<Line> = vec![];
         let bb_diagonal = bb.min.dist(&bb.max);
         let n_lines = (bb_diagonal * density) as usize;
-        for l in 0 .. n_lines {
+        for l in 0..n_lines {
             lines.push(Line {
-                a: Point { x: l as f64 / -density, y: -100.0, z: 0.0 },
-                b: Point { x: l as f64 / -density, y: 100.0, z: 0.0 },
+                a: Point {
+                    x: l as f64 / -density,
+                    y: -100.0,
+                    z: 0.0,
+                },
+                b: Point {
+                    x: l as f64 / -density,
+                    y: 100.0,
+                    z: 0.0,
+                },
             });
             lines.push(Line {
-                a: Point { x: l as f64 / density, y: -100.0, z: 0.0 },
-                b: Point { x: l as f64 / density, y: 100.0, z: 0.0 },
+                a: Point {
+                    x: l as f64 / density,
+                    y: -100.0,
+                    z: 0.0,
+                },
+                b: Point {
+                    x: l as f64 / density,
+                    y: 100.0,
+                    z: 0.0,
+                },
             });
         }
-        lines.into_iter().filter_map(|l| {
-            let points: Vec<_> = [ l.a, l.b ].into_iter().map(|p| Point {
-                x: p.y * proj_normal.y - p.x * proj_normal.x + bb.min.x,
-                y: -p.y * proj_normal.x - p.x * proj_normal.y + bb.min.y,
-                z: 0.0,
-            }).collect();
-            let haircut: Vec<_> = self.haircut.iter().map(|t| vec![ t.a, t.b, t.c ]).collect();
-            let result = points.clip_by(
-                &haircut,
-                FillRule::EvenOdd,
-                ClipRule { invert: false, boundary_included: false }
-            );
-            match result.as_slice() {
-                [ pair ] => Some(Line { a: pair[0], b: pair[1] }),
-                _ => None
-            }
-        }).collect()
+        lines
+            .into_iter()
+            .filter_map(|l| {
+                let points: Vec<_> = [l.a, l.b]
+                    .into_iter()
+                    .map(|p| Point {
+                        x: p.y * proj_normal.y - p.x * proj_normal.x + bb.min.x,
+                        y: -p.y * proj_normal.x - p.x * proj_normal.y + bb.min.y,
+                        z: 0.0,
+                    })
+                    .collect();
+                let haircut: Vec<_> = self.haircut.iter().map(|t| vec![t.a, t.b, t.c]).collect();
+                let result = points.clip_by(
+                    &haircut,
+                    FillRule::EvenOdd,
+                    ClipRule {
+                        invert: false,
+                        boundary_included: false,
+                    },
+                );
+                match result.as_slice() {
+                    [pair] => Some(Line {
+                        a: pair[0],
+                        b: pair[1],
+                    }),
+                    _ => None,
+                }
+            })
+            .collect()
     }
 }
 
@@ -198,7 +227,6 @@ pub struct AppState {
     pub nav: Navigator,
     pub debug_view: Option<DebugView>,
     pub selection: Option<(Vector2, Vector2)>,
-    pub d: RaylibDrawHandle,
 }
 
 #[allow(dead_code)]
@@ -222,64 +250,6 @@ fn translate(p: Point) -> Point {
         x: p.x,
         y: p.y - 0.9,
         z: p.z + 5.0,
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum ColorType {
-    Primary,
-    Lhs,
-    Rhs,
-    Difference,
-    Selected,
-    Cut,
-    Dark,
-    Pink,
-    Blue,
-    Black,
-    Shaded(u8),
-}
-
-impl ColorType {
-    pub fn pen(&self) -> usize {
-        match self {
-            // TODO
-            ColorType::Black => 5,
-            ColorType::Rhs | ColorType::Pink => 6,
-            ColorType::Cut | ColorType::Blue => 7,
-            _ => 0,
-        }
-    }
-    pub fn fill(&self) -> Option<Color> {
-        return None;
-        match self {
-            ColorType::Primary => Some(Color::WHITE.alpha(0.25)),
-            ColorType::Lhs => Some(Color::WHITE.alpha(0.25)),
-            ColorType::Rhs => Some(Color::RED.alpha(0.25)),
-            ColorType::Selected => Some(Color::LIME.alpha(0.25)),
-            ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap().alpha(0.25)),
-            ColorType::Shaded(val) => Some(Color {
-                r: *val,
-                g: *val,
-                b: *val,
-                a: 255,
-            }),
-            _ => None,
-        }
-    }
-    pub fn stroke(&self) -> Option<Color> {
-        match self {
-            ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
-            ColorType::Rhs => Some(Color::RED),
-            ColorType::Difference => Some(Color::BLUE),
-            ColorType::Selected => Some(Color::LIME),
-            ColorType::Cut => Some(Color::from_hex("00AAAA").unwrap()),
-            ColorType::Dark => Some(Color::WHITE.alpha(0.1)),
-            ColorType::Pink => Some(Color::from_hex("ff3388").unwrap()),
-            ColorType::Blue => Some(Color::from_hex("0099ff").unwrap()),
-            ColorType::Black => Some(Color::from_hex("333333").unwrap()),
-            _ => None,
-        }
     }
 }
 
@@ -375,62 +345,34 @@ impl AppState {
         }
     }
 
-    fn draw_triangle(&self, d: &mut Option<&mut RaylibDrawHandle>, t: &Triangle, color: ColorType) {
-        let Some(d) = d else {
-            for line in t.lines() {
-                self.draw_line(d, line.a, line.b, color);
-            }
-            return;
-        };
-        let t = self.bb.reproject_triangle(t);
-        let a = self.to_canvas(t.a);
-        let b = self.to_canvas(t.b);
-        let c = self.to_canvas(t.c);
-        let ab = a - b;
-        let ac = a - c;
-        let cross = ab.x * ac.y - ab.y * ac.x;
-        // we need to sort to clockwise
-        if let Some(fill) = color.fill() {
-            match cross.signum() {
-                -1.0 => d.draw_triangle(a, b, c, fill),
-                _ => d.draw_triangle(a, c, b, fill),
-            };
-        }
-        if let Some(stroke) = color.stroke() {
-            match cross.signum() {
-                -1.0 => d.draw_triangle_lines(a, b, c, stroke),
-                _ => d.draw_triangle_lines(a, c, b, stroke),
-            };
-        }
-    }
-
-    fn draw_line(
-        &self,
-        d: &mut Option<&mut RaylibDrawHandle>,
-        p1: Point,
-        p2: Point,
-        color: ColorType,
-    ) {
-        let p1 = self.bb.reproject(&p1);
-        let p2 = self.bb.reproject(&p2);
-        let p1 = self.to_canvas(p1);
-        let p2 = self.to_canvas(p2);
-        d.draw_blend_mode(BlendMode::BLEND_MULTIPLIED, |mut m| {
-            m.draw_line_v(p1, p2, color.stroke().unwrap());
-        });
-    }
-
-    fn to_canvas(&self, p: Point) -> Vector2 {
-        let new_point = self.nav.zoom.reproject(&Point {
-            x: ((-p.x + 1.0) / 2.0 * 765.0 + 132.5),
-            y: ((-p.y + 1.0) / 2.0 * 765.0),
-            z: 0.0,
-        });
-        Vector2 {
-            x: new_point.x as f32,
-            y: new_point.y as f32,
-        }
-    }
+    // fn draw_triangle(&self, d: &mut Option<&mut RaylibDrawHandle>, t: &Triangle, color: ColorType) {
+    //     let Some(d) = d else {
+    //         for line in t.lines() {
+    //             self.draw_line(d, line.a, line.b, color);
+    //         }
+    //         return;
+    //     };
+    //     let t = self.bb.reproject_triangle(t);
+    //     let a = self.to_canvas(t.a);
+    //     let b = self.to_canvas(t.b);
+    //     let c = self.to_canvas(t.c);
+    //     let ab = a - b;
+    //     let ac = a - c;
+    //     let cross = ab.x * ac.y - ab.y * ac.x;
+    //     // we need to sort to clockwise
+    //     if let Some(fill) = color.fill() {
+    //         match cross.signum() {
+    //             -1.0 => d.draw_triangle(a, b, c, fill),
+    //             _ => d.draw_triangle(a, c, b, fill),
+    //         };
+    //     }
+    //     if let Some(stroke) = color.stroke() {
+    //         match cross.signum() {
+    //             -1.0 => d.draw_triangle_lines(a, b, c, stroke),
+    //             _ => d.draw_triangle_lines(a, c, b, stroke),
+    //         };
+    //     }
+    // }
 
     fn from_canvas(&self, p: &Point) -> Point {
         let p = self.nav.zoom.unproject(p);
@@ -454,17 +396,19 @@ impl AppState {
     //     }
     // }
 
-    pub fn render(&mut self, d: &mut Option<&mut RaylibDrawHandle>) {
-        self.clear(d);
+    pub fn render(&mut self, r: &mut impl Renderer) {
+        r.with_raylib(&mut |d| {
+            d.clear_background(Color::WHITE);
+        });
         let view = self.nav.current();
         match view {
             // AppView::SliceView { .. } => self.render_debug(d),
-            _ => self.render_standard(d),
+            _ => self.render_standard(r),
         };
         if let Some(selection) = self.selection {
             let pos = selection.0;
             let size = selection.1 - selection.0;
-            if let Some(d) = d {
+            r.with_raylib(&mut |d| {
                 d.draw_rectangle_lines(
                     pos.x as i32,
                     pos.y as i32,
@@ -472,56 +416,63 @@ impl AppState {
                     size.y as i32,
                     Color::RED,
                 );
-            }
+            });
         }
     }
 
-    pub fn render_debug(&self, d: &mut Option<&mut RaylibDrawHandle>) {
-        let Some(debug_view) = &self.debug_view else {
-            self.render_standard(d);
-            return;
-        };
-        for face in self.faces.iter() {
-            if face.culled {
-                continue;
-            }
-            for t in &face.haircut {
-                self.draw_triangle(d, t, ColorType::Dark);
-            }
-        }
-        let DebugView {
-            tri,
-            haircut,
-            cutter,
-        } = debug_view;
-        self.draw_triangle(d, tri, ColorType::Lhs);
-        self.draw_triangle(d, cutter, ColorType::Rhs);
-        for cut in haircut {
-            self.draw_triangle(d, cut, ColorType::Difference);
-        }
-    }
+    // pub fn render_debug(&self, r: &mut impl Renderer) {
+    //     let Some(debug_view) = &self.debug_view else {
+    //         self.render_standard(r);
+    //         return;
+    //     };
+    //     for face in self.faces.iter() {
+    //         if face.culled {
+    //             continue;
+    //         }
+    //         for t in &face.haircut {
+    //             self.draw_triangle(r, t, ColorType::Dark);
+    //         }
+    //     }
+    //     let DebugView {
+    //         tri,
+    //         haircut,
+    //         cutter,
+    //     } = debug_view;
+    //     self.draw_triangle(r, tri, ColorType::Lhs);
+    //     self.draw_triangle(r, cutter, ColorType::Rhs);
+    //     for cut in haircut {
+    //         self.draw_triangle(r, cut, ColorType::Difference);
+    //     }
+    // }
 
-    pub fn render_standard(&self, d: &mut Option<&mut RaylibDrawHandle>) {
+    pub fn render_standard(&self, r: &mut impl Renderer) {
         let lights = [
-            (ColorType::Pink, Point {
-                x: -2.0,
-                y: -3.0,
-                z: 1.9,
-            }.normalize()),
-            (ColorType::Blue, Point {
-                x: 0.2,
-                y: -1.5,
-                z: 2.0,
-            }.normalize())
+            (
+                ColorType::Pink,
+                Point {
+                    x: -2.0,
+                    y: -3.0,
+                    z: 1.9,
+                }
+                .normalize(),
+            ),
+            (
+                ColorType::Blue,
+                Point {
+                    x: 0.2,
+                    y: -1.5,
+                    z: 2.0,
+                }
+                .normalize(),
+            ),
         ];
         for (color, light) in lights {
-            println!("SP{};", color.pen());
             for face in self.faces.iter() {
                 if face.culled {
                     continue;
                 }
                 for line in face.hatch(&light) {
-                    self.draw_line(d, line.a, line.b, color);
+                    r.draw_line(&line.a, &line.b, color);
                 }
             }
         }
@@ -549,7 +500,7 @@ impl AppState {
         // println!("SP{};", ColorType::Black.pen());
         for edge in self.edges.iter() {
             for cut_line in &edge.cut {
-                self.draw_line(d, cut_line.a, cut_line.b, ColorType::Black);
+                r.draw_line(&cut_line.a, &cut_line.b, ColorType::Black);
             }
         }
     }
@@ -637,16 +588,19 @@ impl AppState {
             if comb[0].culled == comb[1].culled {
                 continue;
             }
-            let shared_lines: Vec<_> = comb[0].hair.lines()
-                .filter(|l| comb[1].hair.has_line(*l)).collect();
+            let shared_lines: Vec<_> = comb[0]
+                .hair
+                .lines()
+                .filter(|l| comb[1].hair.has_line(*l))
+                .collect();
             let shared_line = match shared_lines[..] {
-                [ line ] => line,
+                [line] => line,
                 [] => continue,
                 _ => panic!("two faces share more than one line??"),
             };
             self.edges.push(Edge {
                 line: shared_line,
-                face_ids: vec![ comb[0].id, comb[1].id ],
+                face_ids: vec![comb[0].id, comb[1].id],
                 cut: vec![],
             });
         }
@@ -661,7 +615,7 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            let hair_clip = vec![ face.hair.a, face.hair.b, face.hair.c ];
+            let hair_clip = vec![face.hair.a, face.hair.b, face.hair.c];
             let clip = hair_clip.overlay(&drawn, OverlayRule::Difference, FillRule::EvenOdd);
             if clip.is_empty() {
                 face.culled = true;
@@ -669,24 +623,37 @@ impl AppState {
             }
             let clap = clip.triangulate().to_triangulation::<usize>();
             let points: Vec<_> = clap.indices.iter().map(|&i| clap.points[i]).collect();
-            face.haircut = points.chunks_exact(3)
+            face.haircut = points
+                .chunks_exact(3)
                 .filter_map(|set| match set {
-                    [ a, b, c ] => Some(Triangle { a: *a, b: *b, c: *c }),
-                    _ => None
+                    [a, b, c] => Some(Triangle {
+                        a: *a,
+                        b: *b,
+                        c: *c,
+                    }),
+                    _ => None,
                 })
                 .collect();
-            for face_edge in self.edges.iter_mut().filter(|e| e.face_ids.contains(&face.id)) {
-                let cut = [ face_edge.line.a, face_edge.line.b ]
-                    .clip_by(&drawn, FillRule::EvenOdd, ClipRule { invert:
-                        true, boundary_included: true
-                    });
+            for face_edge in self
+                .edges
+                .iter_mut()
+                .filter(|e| e.face_ids.contains(&face.id))
+            {
+                let cut = [face_edge.line.a, face_edge.line.b].clip_by(
+                    &drawn,
+                    FillRule::EvenOdd,
+                    ClipRule {
+                        invert: true,
+                        boundary_included: true,
+                    },
+                );
                 face_edge.cut = cut.into_iter().map(|l| Line { a: l[0], b: l[1] }).collect();
             }
             // drawn.push(vec![hair_clip]);
             // drawn = drawn.simplify_shape(FillRule::EvenOdd);
             drawn = hair_clip.overlay(&drawn, OverlayRule::Union, FillRule::EvenOdd);
             face_count += 1;
-            eprintln!("processed {} faces", face_count);
+            // eprintln!("processed {} faces", face_count);
         }
     }
 
@@ -759,7 +726,12 @@ impl AppState {
         }
         // let frame = 6;
 
-        eprintln!("parsed {} faces, {} vertices, and {} normals", self.faces.len(), v.len(), vn.len());
+        eprintln!(
+            "parsed {} faces, {} vertices, and {} normals",
+            self.faces.len(),
+            v.len(),
+            vn.len()
+        );
 
         let _count = 0;
         self.faces.sort();
