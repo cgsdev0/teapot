@@ -20,7 +20,7 @@ use crate::geometry::*;
 use crate::navigator::*;
 use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/bunny.obj");
+const TEAPOT: &str = include_str!("../models/teapot.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
