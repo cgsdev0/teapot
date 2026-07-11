@@ -35,17 +35,14 @@ pub struct Face {
     pub culled: bool,
 }
 
-// 3. Implement PartialOrd (Required by Ord)
 impl PartialOrd for Face {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other)) // Simply defer to the total Ord implementation
+        Some(self.cmp(other))
     }
 }
 
-// 4. Implement Ord (The total ordering logic)
 impl Ord for Face {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Compare x first. If they are equal, move to y, then z.
         self.calc_centroid().z.total_cmp(&other.calc_centroid().z)
     }
 }
@@ -253,16 +250,6 @@ fn translate(p: Point) -> Point {
     }
 }
 
-fn rotate(p: Point, angle: f64) -> Point {
-    let c = angle.cos();
-    let s = angle.sin();
-    Point {
-        x: p.x * c - p.z * s,
-        z: p.x * s + p.z * c,
-        y: p.y,
-    }
-}
-
 impl Default for AppState {
     fn default() -> Self {
         AppState::new()
@@ -344,35 +331,6 @@ impl AppState {
             self.pointer_move(pos.x, pos.y);
         }
     }
-
-    // fn draw_triangle(&self, d: &mut Option<&mut RaylibDrawHandle>, t: &Triangle, color: ColorType) {
-    //     let Some(d) = d else {
-    //         for line in t.lines() {
-    //             self.draw_line(d, line.a, line.b, color);
-    //         }
-    //         return;
-    //     };
-    //     let t = self.bb.reproject_triangle(t);
-    //     let a = self.to_canvas(t.a);
-    //     let b = self.to_canvas(t.b);
-    //     let c = self.to_canvas(t.c);
-    //     let ab = a - b;
-    //     let ac = a - c;
-    //     let cross = ab.x * ac.y - ab.y * ac.x;
-    //     // we need to sort to clockwise
-    //     if let Some(fill) = color.fill() {
-    //         match cross.signum() {
-    //             -1.0 => d.draw_triangle(a, b, c, fill),
-    //             _ => d.draw_triangle(a, c, b, fill),
-    //         };
-    //     }
-    //     if let Some(stroke) = color.stroke() {
-    //         match cross.signum() {
-    //             -1.0 => d.draw_triangle_lines(a, b, c, stroke),
-    //             _ => d.draw_triangle_lines(a, c, b, stroke),
-    //         };
-    //     }
-    // }
 
     fn from_canvas(&self, p: &Point) -> Point {
         let p = self.nav.zoom.unproject(p);
@@ -497,7 +455,6 @@ impl AppState {
             }
         }
         */
-        // println!("SP{};", ColorType::Black.pen());
         for edge in self.edges.iter() {
             for cut_line in &edge.cut {
                 r.draw_line(&cut_line.a, &cut_line.b, ColorType::Black);
@@ -513,6 +470,7 @@ impl AppState {
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
+        return;
         eprintln!("Clicked: {:?}", self.selected_faces);
         let faces: Vec<_> = self.selected_faces.iter().take(2).collect();
         match self.nav.current() {
@@ -724,7 +682,6 @@ impl AppState {
                 _ => {}
             }
         }
-        // let frame = 6;
 
         eprintln!(
             "parsed {} faces, {} vertices, and {} normals",
@@ -735,14 +692,26 @@ impl AppState {
 
         let _count = 0;
         self.faces.sort();
+        self.re_scale_model();
         for (z, face) in self.faces.iter_mut().enumerate() {
             face.id = z;
         }
 
         self.backface_culling();
         self.partial_culling();
-        self.bb.make_square();
         self.find_contours();
+    }
+    pub fn re_scale_model(&mut self) {
+        self.bb.make_square();
+        let scale = 2.0 / (self.bb.max.x - self.bb.min.x);
+        for face in self.faces.iter_mut() {
+            face.hair.a = face.hair.a * scale;
+            face.hair.b = face.hair.b * scale;
+            face.hair.c = face.hair.c * scale;
+            face.eyes.vertex = face.eyes.vertex * scale;
+            face.noes.vertex = face.noes.vertex * scale;
+            face.ears.vertex = face.ears.vertex * scale;
+        }
     }
     pub fn find_contours(&mut self) {
         let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];

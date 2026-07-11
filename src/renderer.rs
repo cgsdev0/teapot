@@ -1,10 +1,11 @@
 use raylib::prelude::*;
 
-use crate::geometry::Point;
+use crate::geometry::{Point, Triangle};
 
 pub trait Renderer {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType);
     fn with_raylib(&mut self, _f: &mut dyn FnMut(&mut RaylibDrawHandle)) {}
+    fn draw_triangle(&mut self, t: &Triangle, color: ColorType);
 }
 
 pub struct RaylibRenderer<'a> {
@@ -19,6 +20,27 @@ impl<'a> Renderer for RaylibRenderer<'a> {
     }
     fn with_raylib(&mut self, f: &mut dyn FnMut(&mut RaylibDrawHandle)) {
         f(&mut self.d);
+    }
+    fn draw_triangle(&mut self, t: &Triangle, color: ColorType) {
+        let a = to_canvas(&t.a);
+        let b = to_canvas(&t.b);
+        let c = to_canvas(&t.c);
+        let ab = a - b;
+        let ac = a - c;
+        let cross = ab.x * ac.y - ab.y * ac.x;
+        // we need to sort to clockwise
+        if let Some(fill) = color.fill() {
+            match cross.signum() {
+                -1.0 => self.d.draw_triangle(a, b, c, fill),
+                _ => self.d.draw_triangle(a, c, b, fill),
+            };
+        }
+        if let Some(stroke) = color.stroke() {
+            match cross.signum() {
+                -1.0 => self.d.draw_triangle_lines(a, b, c, stroke),
+                _ => self.d.draw_triangle_lines(a, c, b, stroke),
+            };
+        }
     }
 }
 
@@ -65,6 +87,11 @@ impl Renderer for HpglRenderer {
             println!("PU {},{};", x, y);
             let (x, y) = to_paper(p2);
             println!("PD {},{};", x, y);
+        }
+    }
+    fn draw_triangle(&mut self, t: &Triangle, color: ColorType) {
+        for line in t.lines() {
+            self.draw_line(&line.a, &line.b, color);
         }
     }
 }
