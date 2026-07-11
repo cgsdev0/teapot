@@ -251,11 +251,28 @@ fn project(p: Point) -> Point {
     }
 }
 
-fn translate(p: Point) -> Point {
+fn fit_distance() -> f64 {
+    let radius = (2.0_f64).sqrt();
+    let aspect = 1.0;
+    let fov: f64 = 0.5;
+    let dist_v = radius / (fov / 2.0).tan();
+    let dist_h = radius / ((fov / 2.0).tan() * aspect);
+    [dist_v, dist_h]
+        .iter()
+        .copied()
+        .map(OrderedFloat)
+        .max()
+        .unwrap()
+        .into_inner()
+}
+
+fn translate(p: Point, bb: &BoundingBox) -> Point {
+    let dx = (bb.max.x + bb.min.x) / 2.0;
+    let dy = (bb.max.y + bb.min.y) / 2.0;
     Point {
-        x: p.x,
-        y: p.y,
-        z: p.z + 5.0,
+        x: p.x - dx,
+        y: p.y - dy,
+        z: p.z + fit_distance(),
     }
 }
 
@@ -631,7 +648,7 @@ impl AppState {
         self.debug_view = None;
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
-        let theta_y: f64 = std::f64::consts::PI / 2.0 * 1.3;
+        let theta_y: f64 = std::f64::consts::PI / 2.0;
         let theta_x: f64 = std::f64::consts::PI / 2.0 * 0.1;
         for line in TEAPOT.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
@@ -642,8 +659,8 @@ impl AppState {
                         .skip(1)
                         .map(|p| {
                             let parts = p.split("/").collect::<Vec<_>>();
-                            let vertex = v[parts[0].parse::<usize>().unwrap() - 1];
-                            // .rotate_y(theta_y)
+                            let vertex =
+                                v[parts[0].parse::<usize>().unwrap() - 1].rotate_y(theta_y);
                             // .rotate_x(theta_x);
                             // let vertex = translate(vertex);
                             FacePart {
@@ -718,7 +735,7 @@ impl AppState {
         let scale_options = [
             (self.model_bb.max.x - self.model_bb.min.x),
             (self.model_bb.max.y - self.model_bb.min.y),
-            (self.model_bb.max.z - self.model_bb.min.z),
+            // (self.model_bb.max.z - self.model_bb.min.z),
         ];
         let scale = scale_options
             .iter()
@@ -728,12 +745,14 @@ impl AppState {
             .unwrap();
         let scale = 2.0 / (scale.into_inner());
         eprintln!("scale: {}", scale);
+        self.model_bb.max = self.model_bb.max * scale;
+        self.model_bb.min = self.model_bb.min * scale;
         for face in self.faces.iter_mut() {
-            face.eyes.vertex = translate(face.eyes.vertex * scale);
+            face.eyes.vertex = translate(face.eyes.vertex * scale, &self.model_bb);
             face.hair.a = project(face.eyes.vertex);
-            face.noes.vertex = translate(face.noes.vertex * scale);
+            face.noes.vertex = translate(face.noes.vertex * scale, &self.model_bb);
             face.hair.b = project(face.noes.vertex);
-            face.ears.vertex = translate(face.ears.vertex * scale);
+            face.ears.vertex = translate(face.ears.vertex * scale, &self.model_bb);
             face.hair.c = project(face.ears.vertex);
             face.haircut = vec![face.hair];
         }
@@ -769,6 +788,8 @@ impl AppState {
                 match res.len() {
                     0 => {}
                     1 => {}
+                    3 => {}
+                    4 => {}
                     2 => {
                         let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
                         // join the haircut into a clip mask
@@ -788,7 +809,7 @@ impl AppState {
                             }
                         }
                     }
-                    _ => unimplemented!("wtf"),
+                    n => unimplemented!("wtf {}", n),
                 }
             }
         }
