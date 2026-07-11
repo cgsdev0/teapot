@@ -11,6 +11,7 @@ struct Args {
 pub mod app;
 pub mod geometry;
 pub mod navigator;
+pub mod renderer;
 
 use crate::app::*;
 

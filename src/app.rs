@@ -1,4 +1,5 @@
 use crate::geometry::BoundingBox;
+use crate::renderer::ColorType;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::float::clip::FloatClip;
 use i_overlay::string::clip::ClipRule;
@@ -13,6 +14,8 @@ use raylib::prelude::RaylibDrawHandle;
 
 use crate::geometry::*;
 use crate::navigator::*;
+
+const TEAPOT: &str = include_str!("../models/bunny.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -195,6 +198,7 @@ pub struct AppState {
     pub nav: Navigator,
     pub debug_view: Option<DebugView>,
     pub selection: Option<(Vector2, Vector2)>,
+    pub d: RaylibDrawHandle,
 }
 
 #[allow(dead_code)]
@@ -279,7 +283,15 @@ impl ColorType {
     }
 }
 
-const TEAPOT: &str = include_str!("../models/bunny.obj");
+fn rotate(p: Point, angle: f64) -> Point {
+    let c = angle.cos();
+    let s = angle.sin();
+    Point {
+        x: p.x * c - p.z * s,
+        z: p.x * s + p.z * c,
+        y: p.y,
+    }
+}
 
 impl Default for AppState {
     fn default() -> Self {
@@ -401,32 +413,11 @@ impl AppState {
     ) {
         let p1 = self.bb.reproject(&p1);
         let p2 = self.bb.reproject(&p2);
-        let Some(d) = d else {
-            // let pen = color.pen();
-            // println!("SP{};", pen);
-            let (x, y) = self.to_paper(p1);
-            println!("PU {},{};", x, y);
-            let (x, y) = self.to_paper(p2);
-            println!("PD {},{};", x, y);
-            return;
-        };
-        if p1.dist2(&p2) < 0.00001 {
-            return;
-        }
         let p1 = self.to_canvas(p1);
         let p2 = self.to_canvas(p2);
         d.draw_blend_mode(BlendMode::BLEND_MULTIPLIED, |mut m| {
             m.draw_line_v(p1, p2, color.stroke().unwrap());
         });
-    }
-
-    fn to_paper(&self, p: Point) -> (i32, i32) {
-        let new_point = self.nav.zoom.reproject(&Point {
-            x: ((p.x + 1.0) / 2.0 * 7650.0 + 1325.0),
-            y: ((-p.y + 1.0) / 2.0 * 7650.0),
-            z: 0.0,
-        });
-        (new_point.x as i32, new_point.y as i32)
     }
 
     fn to_canvas(&self, p: Point) -> Vector2 {
@@ -463,7 +454,7 @@ impl AppState {
     //     }
     // }
 
-    pub fn render(&self, d: &mut Option<&mut RaylibDrawHandle>) {
+    pub fn render(&mut self, d: &mut Option<&mut RaylibDrawHandle>) {
         self.clear(d);
         let view = self.nav.current();
         match view {
