@@ -7,8 +7,12 @@ use i_overlay::float::single::SingleFloatOverlay;
 use i_overlay::string::clip::ClipRule;
 use i_triangle::float::triangulatable::Triangulatable;
 use itertools::Itertools;
+use nalgebra::Perspective3;
+use ordered_float::OrderedFloat;
 use raylib::prelude::*;
 use std::collections::HashSet;
+extern crate nalgebra as na;
+use na::Vector3;
 
 use raylib::prelude::RaylibDrawHandle;
 
@@ -16,7 +20,7 @@ use crate::geometry::*;
 use crate::navigator::*;
 use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/teapot.obj");
+const TEAPOT: &str = include_str!("../models/bunny.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -217,7 +221,10 @@ pub struct Edge {
 
 pub struct AppState {
     pub faces: Vec<Face>,
-    pub bb: BoundingBox,
+    /* The bounding box for the screen-space model. */
+    pub screen_bb: BoundingBox,
+    /* The bounding box for the world-space model. */
+    pub model_bb: BoundingBox,
     pub edges: Vec<Edge>,
     pub contours: Vec<Line>,
     pub selected_faces: HashSet<usize>,
@@ -235,17 +242,19 @@ fn paper(p: Point) -> (u16, u16) {
 }
 
 fn project(p: Point) -> Point {
+    let mat = Perspective3::new(1.0, 0.5, 1.0, 100.0);
+    let res = mat.project_vector(&Vector3::new(p.x, -p.y, p.z));
     Point {
-        x: p.x / (p.z / 4.0),
-        y: p.y / (p.z / 4.0),
-        z: 0.0,
+        x: res.x,
+        y: res.y,
+        z: res.z,
     }
 }
 
 fn translate(p: Point) -> Point {
     Point {
         x: p.x,
-        y: p.y - 0.9,
+        y: p.y,
         z: p.z + 5.0,
     }
 }
@@ -260,7 +269,8 @@ impl AppState {
     pub fn new() -> Self {
         AppState {
             faces: vec![],
-            bb: BoundingBox::new(),
+            screen_bb: BoundingBox::new(),
+            model_bb: BoundingBox::new(),
             edges: vec![],
             contours: vec![],
             nav: Navigator::new(),
@@ -424,15 +434,14 @@ impl AppState {
                 .normalize(),
             ),
         ];
-        for (color, light) in lights {
-            for face in self.faces.iter() {
-                if face.culled {
-                    continue;
-                }
-                for line in face.hatch(&light) {
-                    r.draw_line(&line.a, &line.b, color);
-                }
+        for face in self.faces.iter() {
+            if face.culled {
+                continue;
             }
+            r.draw_triangle(&face.hair, ColorType::Primary);
+            // for line in face.hatch(&light) {
+            //     r.draw_line(&line.a, &line.b, color);
+            // }
         }
         /*
         for face in self.faces.iter() {
@@ -455,11 +464,11 @@ impl AppState {
             }
         }
         */
-        for edge in self.edges.iter() {
-            for cut_line in &edge.cut {
-                r.draw_line(&cut_line.a, &cut_line.b, ColorType::Black);
-            }
-        }
+        // for edge in self.edges.iter() {
+        //     for cut_line in &edge.cut {
+        //         r.draw_line(&cut_line.a, &cut_line.b, ColorType::Black);
+        //     }
+        // }
     }
 
     pub fn clear(&self, d: &mut Option<&mut RaylibDrawHandle>) {
@@ -508,7 +517,7 @@ impl AppState {
             z: 0.0,
         };
         let p = self.from_canvas(&p);
-        let p = self.bb.unproject(&p);
+        let p = self.screen_bb.unproject(&p);
         let mut dirty = false;
         for (i, face) in self.faces.iter().enumerate() {
             if face.culled {
@@ -633,10 +642,10 @@ impl AppState {
                         .skip(1)
                         .map(|p| {
                             let parts = p.split("/").collect::<Vec<_>>();
-                            let vertex = v[parts[0].parse::<usize>().unwrap() - 1]
-                                .rotate_y(theta_y)
-                                .rotate_x(theta_x);
-                            let vertex = translate(vertex);
+                            let vertex = v[parts[0].parse::<usize>().unwrap() - 1];
+                            // .rotate_y(theta_y)
+                            // .rotate_x(theta_x);
+                            // let vertex = translate(vertex);
                             FacePart {
                                 vertex,
                                 normal: match parts.len() {
@@ -660,9 +669,12 @@ impl AppState {
                         haircut: vec![tri],
                         culled: false,
                     };
-                    self.bb.expand(&face.hair.a);
-                    self.bb.expand(&face.hair.b);
-                    self.bb.expand(&face.hair.c);
+                    self.model_bb.expand(&face.eyes.vertex);
+                    self.model_bb.expand(&face.noes.vertex);
+                    self.model_bb.expand(&face.ears.vertex);
+                    // self.screen_bb.expand(&face.hair.a);
+                    // self.screen_bb.expand(&face.hair.b);
+                    // self.screen_bb.expand(&face.hair.c);
                     self.faces.push(face);
                 }
                 "v" => {
@@ -693,6 +705,7 @@ impl AppState {
         let _count = 0;
         self.faces.sort();
         self.re_scale_model();
+        eprintln!("{:?}", self.model_bb);
         for (z, face) in self.faces.iter_mut().enumerate() {
             face.id = z;
         }
@@ -702,15 +715,27 @@ impl AppState {
         self.find_contours();
     }
     pub fn re_scale_model(&mut self) {
-        self.bb.make_square();
-        let scale = 2.0 / (self.bb.max.x - self.bb.min.x);
+        let scale_options = [
+            (self.model_bb.max.x - self.model_bb.min.x),
+            (self.model_bb.max.y - self.model_bb.min.y),
+            (self.model_bb.max.z - self.model_bb.min.z),
+        ];
+        let scale = scale_options
+            .iter()
+            .copied()
+            .map(OrderedFloat::from)
+            .max()
+            .unwrap();
+        let scale = 2.0 / (scale.into_inner());
+        eprintln!("scale: {}", scale);
         for face in self.faces.iter_mut() {
-            face.hair.a = face.hair.a * scale;
-            face.hair.b = face.hair.b * scale;
-            face.hair.c = face.hair.c * scale;
-            face.eyes.vertex = face.eyes.vertex * scale;
-            face.noes.vertex = face.noes.vertex * scale;
-            face.ears.vertex = face.ears.vertex * scale;
+            face.eyes.vertex = translate(face.eyes.vertex * scale);
+            face.hair.a = project(face.eyes.vertex);
+            face.noes.vertex = translate(face.noes.vertex * scale);
+            face.hair.b = project(face.noes.vertex);
+            face.ears.vertex = translate(face.ears.vertex * scale);
+            face.hair.c = project(face.ears.vertex);
+            face.haircut = vec![face.hair];
         }
     }
     pub fn find_contours(&mut self) {

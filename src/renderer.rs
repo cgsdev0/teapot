@@ -123,7 +123,7 @@ impl ColorType {
     }
     pub fn fill(&self) -> Option<Color> {
         match self {
-            ColorType::Primary => Some(Color::WHITE.alpha(0.25)),
+            ColorType::Primary => Some(Color::RED.alpha(0.25)),
             ColorType::Lhs => Some(Color::WHITE.alpha(0.25)),
             ColorType::Rhs => Some(Color::RED.alpha(0.25)),
             ColorType::Selected => Some(Color::LIME.alpha(0.25)),
@@ -139,6 +139,7 @@ impl ColorType {
     }
     pub fn stroke(&self) -> Option<Color> {
         match self {
+            ColorType::Primary => Some(Color::BLACK),
             ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
             ColorType::Rhs => Some(Color::RED),
             ColorType::Difference => Some(Color::BLUE),
