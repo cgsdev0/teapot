@@ -237,6 +237,12 @@ pub struct BoundingBox {
     pub mode: BBMode,
 }
 
+impl Default for BoundingBox {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BoundingBox {
     pub fn new() -> Self {
         Self {

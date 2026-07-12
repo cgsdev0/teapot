@@ -1,5 +1,4 @@
 use clap::Parser;
-use raylib::prelude::RaylibDrawHandle;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

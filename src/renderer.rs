@@ -48,6 +48,12 @@ pub struct HpglRenderer {
     current_pen: usize,
 }
 
+impl Default for HpglRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HpglRenderer {
     pub fn new() -> Self {
         HpglRenderer { current_pen: 0 }
