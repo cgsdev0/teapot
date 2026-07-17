@@ -13,7 +13,10 @@ pub mod geometry;
 pub mod navigator;
 pub mod renderer;
 
-use crate::{app::*, renderer::RaylibRenderer};
+use crate::{
+    app::*,
+    renderer::{HpglRenderer, RaylibRenderer},
+};
 
 fn main() {
     let mut app = AppState::new();

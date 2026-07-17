@@ -88,7 +88,8 @@ fn to_canvas(p: &Point) -> Point {
 
 impl Renderer for HpglRenderer {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType) {
-        let pen = color.pen();
+        // let pen = color.pen();
+        let pen = 5;
         if pen > 0 {
             if self.current_pen != pen {
                 println!("SP{};", pen);
@@ -110,6 +111,8 @@ impl Renderer for HpglRenderer {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ColorType {
     Primary,
+    Contour,
+    Outline,
     Lhs,
     Rhs,
     Difference,
@@ -126,7 +129,8 @@ impl ColorType {
     pub fn pen(&self) -> usize {
         match self {
             // TODO
-            ColorType::Black => 5,
+            ColorType::Outline => 2,
+            ColorType::Contour => 3,
             ColorType::Rhs | ColorType::Pink => 6,
             ColorType::Cut | ColorType::Blue => 7,
             _ => 0,
@@ -150,6 +154,8 @@ impl ColorType {
     }
     pub fn stroke(&self) -> Option<Color> {
         match self {
+            ColorType::Contour => Some(Color::LIME),
+            ColorType::Outline => Some(Color::RED),
             ColorType::Primary => Some(Color::BLACK),
             ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
             ColorType::Rhs => Some(Color::RED),

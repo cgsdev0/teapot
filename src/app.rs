@@ -20,7 +20,7 @@ use crate::geometry::*;
 use crate::navigator::*;
 use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/teapot.obj");
+const TEAPOT: &str = include_str!("../models/bunny.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -226,6 +226,7 @@ pub struct AppState {
     /// The bounding box for the world-space model.
     pub model_bb: BoundingBox,
     pub edges: Vec<Edge>,
+    pub shape: Vec<Vec<Point>>,
     pub contours: Vec<Line>,
     pub selected_faces: HashSet<usize>,
     pub nav: Navigator,
@@ -288,6 +289,7 @@ impl AppState {
             faces: vec![],
             screen_bb: BoundingBox::new(),
             model_bb: BoundingBox::new(),
+            shape: vec![],
             edges: vec![],
             contours: vec![],
             nav: Navigator::new(),
@@ -313,6 +315,11 @@ impl AppState {
         //     }
         //     _ => {}
         // };
+        if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
+            eprintln!("yeet");
+            let mut r = HpglRenderer::new();
+            self.render(&mut r);
+        }
         if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
             if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
                 self.nav.go_back();
@@ -384,7 +391,7 @@ impl AppState {
 
     pub fn render(&mut self, r: &mut impl Renderer) {
         r.with_raylib(&mut |d| {
-            d.clear_background(Color::WHITE);
+            d.clear_background(Color::BLACK);
         });
         let view = self.nav.current();
         match view {
@@ -456,10 +463,19 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            r.draw_triangle(&face.hair, ColorType::Primary);
+            // r.draw_triangle(&face.hair, ColorType::Primary);
             // for line in face.hatch(&light) {
             //     r.draw_line(&line.a, &line.b, color);
             // }
+        }
+        for contour in &self.contours {
+            r.draw_line(&contour.a, &contour.b, ColorType::Contour);
+        }
+        for contour in &self.shape {
+            for [a, b] in contour.iter().circular_array_windows::<2>() {
+                r.draw_line(a, b, ColorType::Outline);
+            }
+            break;
         }
         /*
         for face in self.faces.iter() {
@@ -487,13 +503,6 @@ impl AppState {
         //         r.draw_line(&cut_line.a, &cut_line.b, ColorType::Black);
         //     }
         // }
-    }
-
-    pub fn clear(&self, d: &mut Option<&mut RaylibDrawHandle>) {
-        let Some(d) = d else {
-            return;
-        };
-        d.clear_background(Color::WHITE);
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
@@ -569,26 +578,26 @@ impl AppState {
             }
         }
         eprintln!("culled {} backfaces", cull_count);
-        for comb in self.faces.iter().combinations(2) {
-            if comb[0].culled == comb[1].culled {
-                continue;
-            }
-            let shared_lines: Vec<_> = comb[0]
-                .hair
-                .lines()
-                .filter(|l| comb[1].hair.has_line(*l))
-                .collect();
-            let shared_line = match shared_lines[..] {
-                [line] => line,
-                [] => continue,
-                _ => panic!("two faces share more than one line??"),
-            };
-            self.edges.push(Edge {
-                line: shared_line,
-                face_ids: vec![comb[0].id, comb[1].id],
-                cut: vec![],
-            });
-        }
+        // for comb in self.faces.iter().combinations(2) {
+        //     if comb[0].culled == comb[1].culled {
+        //         continue;
+        //     }
+        //     let shared_lines: Vec<_> = comb[0]
+        //         .hair
+        //         .lines()
+        //         .filter(|l| comb[1].hair.has_line(*l))
+        //         .collect();
+        //     let shared_line = match shared_lines[..] {
+        //         [line] => line,
+        //         [] => continue,
+        //         _ => panic!("two faces share more than one line??"),
+        //     };
+        //     self.edges.push(Edge {
+        //         line: shared_line,
+        //         face_ids: vec![comb[0].id, comb[1].id],
+        //         cut: vec![],
+        //     });
+        // }
         eprintln!("found {} edges", self.edges.len());
     }
 
@@ -639,6 +648,23 @@ impl AppState {
             drawn = hair_clip.overlay(&drawn, OverlayRule::Union, FillRule::EvenOdd);
             face_count += 1;
             // eprintln!("processed {} faces", face_count);
+        }
+    }
+
+    pub fn find_edges(&mut self) {
+        let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
+        for face in self.faces.iter() {
+            let t = face.hair;
+            let clip = [t.a, t.b, t.c];
+            let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
+            subj = result;
+        }
+        for shape in subj {
+            // for contour in shape {
+            //     // for [a, b] in contour.iter().circular_array_windows::<2>() {
+            //     // }
+            // }
+            self.shape = shape;
         }
     }
 
@@ -728,6 +754,7 @@ impl AppState {
         self.backface_culling();
         self.partial_culling();
         self.find_contours();
+        self.find_edges();
     }
     pub fn re_scale_model(&mut self) {
         let scale_options = [
@@ -768,8 +795,8 @@ impl AppState {
             let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
             subj = result;
         }
-        for i in 0..=100 {
-            let z = (i as f64) / 20.0 - 2.0;
+        for i in 0..=200 {
+            let z = (i as f64) / 40.0 - 2.0;
             let plane = Plane {
                 point: Point {
                     x: 0.0,
