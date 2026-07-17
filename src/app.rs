@@ -1,4 +1,4 @@
-use crate::geometry::BoundingBox;
+use crate::bounding_box::BoundingBox;
 use crate::renderer::ColorType;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
@@ -221,9 +221,9 @@ pub struct Edge {
 
 pub struct AppState {
     pub faces: Vec<Face>,
-    /* The bounding box for the screen-space model. */
+    /// The bounding box for the screen-space model.
     pub screen_bb: BoundingBox,
-    /* The bounding box for the world-space model. */
+    /// The bounding box for the world-space model.
     pub model_bb: BoundingBox,
     pub edges: Vec<Edge>,
     pub contours: Vec<Line>,
@@ -297,6 +297,7 @@ impl AppState {
         }
     }
     pub fn update(&mut self, rl: &mut RaylibHandle) {
+        self.nav.zoom.update(rl.get_frame_time() as f64);
         // arrow keys
         // match self.nav.current() {
         //     AppView::SliceView { face, idx } => {
@@ -360,7 +361,7 @@ impl AppState {
     }
 
     fn from_canvas(&self, p: &Point) -> Point {
-        let p = self.nav.zoom.unproject(p);
+        let p = self.nav.zoom.as_bb().unproject(p);
         Point {
             x: ((p.x - 132.5) * 2.0 / 765.0 - 1.0),
             y: (-((p.y * 2.0 / 765.0) - 1.0)),
@@ -689,9 +690,6 @@ impl AppState {
                     self.model_bb.expand(&face.eyes.vertex);
                     self.model_bb.expand(&face.noes.vertex);
                     self.model_bb.expand(&face.ears.vertex);
-                    // self.screen_bb.expand(&face.hair.a);
-                    // self.screen_bb.expand(&face.hair.b);
-                    // self.screen_bb.expand(&face.hair.c);
                     self.faces.push(face);
                 }
                 "v" => {
@@ -755,6 +753,10 @@ impl AppState {
             face.ears.vertex = translate(face.ears.vertex * scale, &self.model_bb);
             face.hair.c = project(face.ears.vertex);
             face.haircut = vec![face.hair];
+            // re-calc screen_bb
+            self.screen_bb.expand(&face.hair.a);
+            self.screen_bb.expand(&face.hair.b);
+            self.screen_bb.expand(&face.hair.c);
         }
     }
     pub fn find_contours(&mut self) {
@@ -788,8 +790,12 @@ impl AppState {
                 match res.len() {
                     0 => {}
                     1 => {}
-                    3 => {}
-                    4 => {}
+                    3 => {
+                        // TODO: this should be some kinda line i think
+                    }
+                    4 => {
+                        // we are in floating point hell
+                    }
                     2 => {
                         let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
                         // join the haircut into a clip mask

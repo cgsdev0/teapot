@@ -1,3 +1,4 @@
+use crate::bounding_box::BoundingBox;
 use raylib::prelude::*;
 
 use crate::geometry::{Point, Triangle};
@@ -10,12 +11,17 @@ pub trait Renderer {
 
 pub struct RaylibRenderer<'a> {
     pub d: RaylibDrawHandle<'a>,
+    pub zoom: BoundingBox,
 }
 
 impl<'a> Renderer for RaylibRenderer<'a> {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType) {
         if let Some(color) = color.stroke() {
-            self.d.draw_line_v(to_canvas(p1), to_canvas(p2), color);
+            let p1 = to_canvas(p1);
+            let p2 = to_canvas(p2);
+            let p1 = self.zoom.reproject(&p1);
+            let p2 = self.zoom.reproject(&p2);
+            self.d.draw_line_v(p1, p2, color);
         }
     }
     fn with_raylib(&mut self, f: &mut dyn FnMut(&mut RaylibDrawHandle)) {
@@ -25,6 +31,9 @@ impl<'a> Renderer for RaylibRenderer<'a> {
         let a = to_canvas(&t.a);
         let b = to_canvas(&t.b);
         let c = to_canvas(&t.c);
+        let a = self.zoom.reproject(&a);
+        let b = self.zoom.reproject(&b);
+        let c = self.zoom.reproject(&c);
         let ab = a - b;
         let ac = a - c;
         let cross = ab.x * ac.y - ab.y * ac.x;
@@ -69,15 +78,11 @@ fn to_paper(p: &Point) -> (i32, i32) {
     (new_point.x as i32, new_point.y as i32)
 }
 
-fn to_canvas(p: &Point) -> Vector2 {
-    let new_point = &Point {
+fn to_canvas(p: &Point) -> Point {
+    Point {
         x: ((-p.x + 1.0) / 2.0 * 765.0 + 132.5),
         y: ((-p.y + 1.0) / 2.0 * 765.0),
         z: 0.0,
-    };
-    Vector2 {
-        x: new_point.x as f32,
-        y: new_point.y as f32,
     }
 }
 

@@ -6,8 +6,8 @@ use i_triangle::float::triangulatable::Triangulatable;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::array::IntoIter;
-use std::ops::{Add, Mul, Sub};
 use std::hash::{Hash, Hasher};
+use std::ops::{Add, Mul, Sub};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Line {
@@ -224,141 +224,6 @@ impl ConvexPolygon {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub enum BBMode {
-    FromCenter,
-    FromTopLeft,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct BoundingBox {
-    pub min: Point,
-    pub max: Point,
-    pub mode: BBMode,
-}
-
-impl Default for BoundingBox {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BoundingBox {
-    pub fn new() -> Self {
-        Self {
-            min: Point {
-                x: f64::INFINITY,
-                y: f64::INFINITY,
-                z: 0.0,
-            },
-            max: Point {
-                x: f64::NEG_INFINITY,
-                y: f64::NEG_INFINITY,
-                z: 0.0,
-            },
-            mode: BBMode::FromCenter,
-        }
-    }
-    pub fn make_square(&mut self) {
-        let dx = self.max.x - self.min.x;
-        let dy = self.max.y - self.min.y;
-        if dy > dx {
-            let delta = dy - dx;
-            self.min.x -= delta * 0.5;
-            self.max.x += delta * 0.5;
-        } else if dx > dy {
-            let delta = dx - dy;
-            self.min.y -= delta * 0.5;
-            self.max.y += delta * 0.5;
-        }
-    }
-
-    pub fn expand(&mut self, point: &Point) {
-        self.min.x = self.min.x.min(point.x);
-        self.min.y = self.min.y.min(point.y);
-        self.min.z = self.min.z.min(point.z);
-        self.max.x = self.max.x.max(point.x);
-        self.max.y = self.max.y.max(point.y);
-        self.max.z = self.max.z.max(point.z);
-    }
-
-    pub fn reproject1d(&self, p: f64, start: f64, end: f64, dim: f64) -> f64 {
-        match self.mode {
-            BBMode::FromCenter => (p - start) / (end - start) * 2.0 - 1.0,
-            BBMode::FromTopLeft => (p - start) * (dim / (end - start)),
-        }
-    }
-
-    pub fn unproject1d(&self, p: f64, start: f64, end: f64, dim: f64) -> f64 {
-        match self.mode {
-            BBMode::FromCenter => (p + 1.0) / 2.0 * (end - start) + start,
-            BBMode::FromTopLeft => p / dim * (end - start) + start,
-        }
-    }
-    // re-project a point zoomed to fit the bounding box
-    pub fn reproject(&self, point: &Point) -> Point {
-        // let zx = (x) => (x - box.x1) * (canvas.width / (box.x2 - box.x1));
-        // let zy = (y) => (y - box.y1) * (canvas.height / (box.y2 - box.y1));
-        let xrange = self.reproject1d(point.x, self.min.x, self.max.x, 1030.0);
-        let yrange = self.reproject1d(point.y, self.min.y, self.max.y, 765.0);
-        Point {
-            x: xrange,
-            y: yrange,
-            z: 0.0,
-        }
-    }
-
-    pub fn unproject(&self, point: &Point) -> Point {
-        let xrange = self.unproject1d(point.x, self.min.x, self.max.x, 1030.0);
-        let yrange = self.unproject1d(point.y, self.min.y, self.max.y, 765.0);
-        Point {
-            x: xrange,
-            y: yrange,
-            z: 0.0,
-        }
-    }
-
-    pub fn reproject_bb(&self, bb: &BoundingBox) -> BoundingBox {
-        BoundingBox {
-            min: self.reproject(&bb.min),
-            max: self.reproject(&bb.max),
-            mode: bb.mode,
-        }
-    }
-
-    pub fn reproject_line(&self, edge: &Line) -> Line {
-        Line {
-            a: self.reproject(&edge.a),
-            b: self.reproject(&edge.b),
-        }
-    }
-    pub fn reproject_triangle(&self, tri: &Triangle) -> Triangle {
-        Triangle {
-            a: self.reproject(&tri.a),
-            b: self.reproject(&tri.b),
-            c: self.reproject(&tri.c),
-        }
-    }
-
-    pub fn add_padding(&mut self, h: f64, v: f64) {
-        self.min.x -= h / 2.0;
-        self.min.y -= v / 2.0;
-        self.max.x += h / 2.0;
-        self.max.y += v / 2.0;
-    }
-    // fn draw(&self) {
-    //     let (x1, y1) = canvas(self.min);
-    //     let (x2, y2) = canvas(self.max);
-    //     println!(
-    //         "ctx.strokeStyle='cyan';ctx.strokeRect({}, {}, {}, {});",
-    //         x1,
-    //         y1,
-    //         x2 - x1,
-    //         y2 - y1
-    //     );
-    // }
-}
-
 impl Eq for Triangle {}
 
 impl Sub for Triangle {
@@ -523,7 +388,6 @@ impl Point {
             y: self.y * c - self.z * s,
         }
     }
-
 }
 
 impl Hash for Point {

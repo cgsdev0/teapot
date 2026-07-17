@@ -1,6 +1,7 @@
 use std::fs;
 
-use crate::geometry::{BBMode, BoundingBox, Point};
+use crate::bounding_box::{AnimatedBoundingBox, BBMode, BoundingBox};
+use crate::geometry::Point;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq)]
@@ -22,7 +23,7 @@ pub struct Navigator {
     stack: Vec<AppView>,
     redo: Vec<AppView>,
     pub clip: bool,
-    pub zoom: crate::geometry::BoundingBox,
+    pub zoom: AnimatedBoundingBox,
 }
 
 impl Navigator {
@@ -37,7 +38,7 @@ impl Navigator {
                 let mut me = Navigator {
                     stack: vec![],
                     redo: vec![],
-                    zoom: BoundingBox::new(),
+                    zoom: AnimatedBoundingBox::new(Self::default_zoom()),
                     clip: true,
                 };
                 me.reset_zoom();
@@ -54,37 +55,42 @@ impl Navigator {
     }
 
     pub fn zoom_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-        let min = self.zoom.unproject(&Point {
+        let min = self.zoom.as_bb().unproject(&Point {
             x: x1.min(x2),
             y: y1.min(y2),
             z: 0.0,
         });
-        let max = self.zoom.unproject(&Point {
+        let max = self.zoom.as_bb().unproject(&Point {
             x: x2.max(x1),
             y: y2.max(y1),
             z: 0.0,
         });
-        self.zoom = BoundingBox {
+        let zoom = BoundingBox {
             min,
             max,
             mode: BBMode::FromTopLeft,
         };
+        self.zoom.set_target(zoom);
         self.save();
     }
 
-    pub fn reset_zoom(&mut self) {
-        self.zoom = BoundingBox::new();
-        self.zoom.mode = BBMode::FromTopLeft;
-        self.zoom.expand(&Point {
+    fn default_zoom() -> BoundingBox {
+        let mut zoom = BoundingBox::new();
+        zoom.mode = BBMode::FromTopLeft;
+        zoom.expand(&Point {
             x: 0.0,
             y: 0.0,
             z: 0.0,
         });
-        self.zoom.expand(&Point {
+        zoom.expand(&Point {
             x: 1030.0,
             y: 765.0,
             z: 0.0,
         });
+        zoom
+    }
+    pub fn reset_zoom(&mut self) {
+        self.zoom.set_target(Self::default_zoom());
         self.save();
     }
 
