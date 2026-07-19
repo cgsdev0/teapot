@@ -795,8 +795,8 @@ impl AppState {
             let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
             subj = result;
         }
-        for i in 0..=200 {
-            let z = (i as f64) / 40.0 - 2.0;
+        for i in 0..=800 {
+            let z = (i as f64) / 160.0 - 2.0;
             let plane = Plane {
                 point: Point {
                     x: 0.0,

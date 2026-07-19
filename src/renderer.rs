@@ -88,8 +88,7 @@ fn to_canvas(p: &Point) -> Point {
 
 impl Renderer for HpglRenderer {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType) {
-        // let pen = color.pen();
-        let pen = 5;
+        let pen = color.pen();
         if pen > 0 {
             if self.current_pen != pen {
                 println!("SP{};", pen);
