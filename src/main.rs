@@ -23,7 +23,11 @@ fn main() {
     app.restart();
     let args = Args::parse();
     // app.nav.zoom.add_padding(100.0, 100.0);
-    let (mut rl, thread) = raylib::init().size(1030, 765).title("TeaPlot").build();
+    let (mut rl, thread) = raylib::init()
+        .size(1030, 765)
+        .title("TeaPlot")
+        .log_level(raylib::ffi::TraceLogLevel::LOG_NONE)
+        .build();
 
     while !rl.window_should_close() {
         app.update(&mut rl);
