@@ -322,6 +322,13 @@ impl Mul<Point> for f64 {
     }
 }
 impl Point {
+    pub fn cross(&self, other: &Point) -> Point {
+        Point {
+            x: self.y * other.z - self.z * other.y,
+            y: -(self.x * other.z - self.z * other.x),
+            z: self.x * other.y - self.y * other.x,
+        }
+    }
     pub fn normalize(&self) -> Point {
         let mag = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
         Point {

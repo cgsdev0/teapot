@@ -1,5 +1,8 @@
+use std::{fs::File, io::BufWriter, io::Write};
+
 use crate::bounding_box::BoundingBox;
 use raylib::prelude::*;
+use uuid::Uuid;
 
 use crate::geometry::{Point, Triangle};
 
@@ -55,8 +58,8 @@ impl<'a> Renderer for RaylibRenderer<'a> {
 
 pub struct HpglRenderer {
     current_pen: usize,
+    writer: BufWriter<File>,
 }
-
 impl Default for HpglRenderer {
     fn default() -> Self {
         Self::new()
@@ -65,7 +68,14 @@ impl Default for HpglRenderer {
 
 impl HpglRenderer {
     pub fn new() -> Self {
-        HpglRenderer { current_pen: 0 }
+        let uuid = Uuid::now_v7();
+        let fname = "hpgl/".to_owned() + uuid.to_string().as_str() + ".hpgl";
+        eprintln!("Creating file: {}", fname);
+        let file = File::create(fname).unwrap();
+        HpglRenderer {
+            current_pen: 0,
+            writer: BufWriter::new(file),
+        }
     }
 }
 
@@ -91,13 +101,13 @@ impl Renderer for HpglRenderer {
         let pen = color.pen();
         if pen > 0 {
             if self.current_pen != pen {
-                println!("SP{};", pen);
+                writeln!(self.writer, "SP{};", pen);
                 self.current_pen = pen;
             }
             let (x, y) = to_paper(p1);
-            println!("PU {},{};", x, y);
+            writeln!(self.writer, "PU {},{};", x, y);
             let (x, y) = to_paper(p2);
-            println!("PD {},{};", x, y);
+            writeln!(self.writer, "PD {},{};", x, y);
         }
     }
     fn draw_triangle(&mut self, t: &Triangle, color: ColorType) {

@@ -2,4 +2,5 @@
 target/
 main.js
 dist/
+hpgl/
 nav_state.json

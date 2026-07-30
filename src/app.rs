@@ -131,7 +131,7 @@ impl Face {
         .normalize()
     }
     // TODO:
-    // - slice model with planes perpendicular to light sources
+    // - slice model with planes latitudeendicular to light sources
     // - save resulting lines by octave
     // - for each face, draw some, all, or no lines depending on dot product
     pub fn hatch(&self, light: &Point) -> Vec<Line> {
@@ -219,6 +219,13 @@ pub struct Edge {
     pub cut: Vec<Line>,
 }
 
+#[derive(Debug)]
+pub struct Contour {
+    pub line: Line,
+    pub face_id: usize,
+    pub cut: Vec<Line>,
+}
+
 pub struct AppState {
     pub faces: Vec<Face>,
     /// The bounding box for the screen-space model.
@@ -227,11 +234,13 @@ pub struct AppState {
     pub model_bb: BoundingBox,
     pub edges: Vec<Edge>,
     pub shape: Vec<Vec<Point>>,
-    pub contours: Vec<Line>,
+    pub longitude_contours: Vec<Contour>,
+    pub latitude_contours: Vec<Contour>,
     pub selected_faces: HashSet<usize>,
     pub nav: Navigator,
     pub debug_view: Option<DebugView>,
     pub selection: Option<(Vector2, Vector2)>,
+    pub light: Point,
 }
 
 #[allow(dead_code)]
@@ -267,6 +276,15 @@ fn fit_distance() -> f64 {
         .into_inner()
 }
 
+fn untranslate(p: Point, bb: &BoundingBox) -> Point {
+    let dx = (bb.max.x + bb.min.x) / 2.0;
+    let dy = (bb.max.y + bb.min.y) / 2.0;
+    Point {
+        x: p.x + dx,
+        y: p.y + dy,
+        z: p.z - fit_distance(),
+    }
+}
 fn translate(p: Point, bb: &BoundingBox) -> Point {
     let dx = (bb.max.x + bb.min.x) / 2.0;
     let dy = (bb.max.y + bb.min.y) / 2.0;
@@ -291,11 +309,17 @@ impl AppState {
             model_bb: BoundingBox::new(),
             shape: vec![],
             edges: vec![],
-            contours: vec![],
+            longitude_contours: vec![],
+            latitude_contours: vec![],
             nav: Navigator::new(),
             selected_faces: HashSet::new(),
             debug_view: None,
             selection: None,
+            light: Point {
+                x: 0.0,
+                y: -1.0,
+                z: 0.0,
+            },
         }
     }
     pub fn update(&mut self, rl: &mut RaylibHandle) {
@@ -316,7 +340,6 @@ impl AppState {
         //     _ => {}
         // };
         if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
-            eprintln!("yeet");
             let mut r = HpglRenderer::new();
             self.render(&mut r);
         }
@@ -439,26 +462,6 @@ impl AppState {
     // }
 
     pub fn render_standard(&self, r: &mut impl Renderer) {
-        let lights = [
-            (
-                ColorType::Pink,
-                Point {
-                    x: -2.0,
-                    y: -3.0,
-                    z: 1.9,
-                }
-                .normalize(),
-            ),
-            (
-                ColorType::Blue,
-                Point {
-                    x: 0.2,
-                    y: -1.5,
-                    z: 2.0,
-                }
-                .normalize(),
-            ),
-        ];
         for face in self.faces.iter() {
             if face.culled {
                 continue;
@@ -468,15 +471,22 @@ impl AppState {
             //     r.draw_line(&line.a, &line.b, color);
             // }
         }
-        for contour in &self.contours {
-            r.draw_line(&contour.a, &contour.b, ColorType::Contour);
-        }
-        for contour in &self.shape {
-            for [a, b] in contour.iter().circular_array_windows::<2>() {
-                r.draw_line(a, b, ColorType::Outline);
+        for contour in self.longitude_contours.iter() {
+            for line in contour.cut.iter() {
+                r.draw_line(&line.a, &line.b, ColorType::Contour);
             }
-            break;
         }
+        for contour in self.latitude_contours.iter() {
+            for line in contour.cut.iter() {
+                r.draw_line(&line.a, &line.b, ColorType::Blue);
+            }
+        }
+        // for contour in &self.shape {
+        //     for [a, b] in contour.iter().circular_array_windows::<2>() {
+        //         r.draw_line(a, b, ColorType::Outline);
+        //     }
+        //     break;
+        // }
         /*
         for face in self.faces.iter() {
             if face.culled {
@@ -498,11 +508,11 @@ impl AppState {
             }
         }
         */
-        for edge in self.edges.iter() {
-            for cut_line in &edge.cut {
-                r.draw_line(&cut_line.a, &cut_line.b, ColorType::Outline);
-            }
-        }
+        // for edge in self.edges.iter() {
+        //     for cut_line in &edge.cut {
+        //         r.draw_line(&cut_line.a, &cut_line.b, ColorType::Outline);
+        //     }
+        // }
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
@@ -753,7 +763,8 @@ impl AppState {
 
         self.backface_culling();
         self.partial_culling();
-        self.find_contours();
+        self.find_latitude_contours();
+        self.find_longitude_contours();
         // self.find_edges();
     }
     pub fn re_scale_model(&mut self) {
@@ -786,24 +797,55 @@ impl AppState {
             self.screen_bb.expand(&face.hair.c);
         }
     }
-    pub fn find_contours(&mut self) {
+    pub fn find_longitude_contours(&mut self) {
         let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
-        self.contours.clear();
         for face in self.faces.iter() {
             let t = face.hair;
             let clip = [t.a, t.b, t.c];
             let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
             subj = result;
         }
-        for i in 0..=800 {
-            let z = (i as f64) / 40.0 - 4.0;
-            let plane = Plane {
-                point: Point {
+        let light = self.light.normalize();
+        for i in 0..=100 {
+            let theta = (i as f64) / 100.0 * 2.0 * std::f64::consts::PI;
+            let lx = light.x.abs();
+            let ly = light.y.abs();
+            let lz = light.z.abs();
+            let garbage = if lx <= ly && lx <= lz {
+                Point {
                     x: 1.0,
-                    y: -2.0,
-                    z: -0.5,
+                    y: 0.0,
+                    z: 0.0,
                 }
-                .normalize(),
+            } else if ly <= lz {
+                Point {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                }
+            } else {
+                Point {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 1.0,
+                }
+            };
+
+            let u = light.cross(&garbage).normalize();
+            let w = light.cross(&u).normalize();
+            let normal = u * theta.cos() + w * theta.sin();
+
+            let origin = untranslate(
+                Point {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                &self.model_bb,
+            );
+            let z = normal.dot(&origin);
+            let plane = Plane {
+                point: normal,
                 offset: z,
             };
             for face in self.faces.iter() {
@@ -825,6 +867,15 @@ impl AppState {
                         // we are in floating point hell
                     }
                     2 => {
+                        let line = [project(res[0]), project(res[1])];
+                        let mut contour = Contour {
+                            line: Line {
+                                a: line[0],
+                                b: line[1],
+                            },
+                            face_id: face.id,
+                            cut: vec![],
+                        };
                         let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
                         // join the haircut into a clip mask
                         for t in face.haircut.iter() {
@@ -832,15 +883,85 @@ impl AppState {
                             let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
                             subj = result;
                         }
-                        let line = [project(res[0]), project(res[1])];
                         for shape in subj {
                             let result = line.clip_by(&shape, FillRule::NonZero, clip_rule);
                             for line in result {
-                                self.contours.push(Line {
+                                contour.cut.push(Line {
                                     a: line[0],
                                     b: line[1],
                                 });
                             }
+                        }
+                        if !contour.cut.is_empty() {
+                            self.longitude_contours.push(contour);
+                        }
+                    }
+                    n => unimplemented!("wtf {}", n),
+                }
+            }
+        }
+    }
+    pub fn find_latitude_contours(&mut self) {
+        let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
+        for face in self.faces.iter() {
+            let t = face.hair;
+            let clip = [t.a, t.b, t.c];
+            let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
+            subj = result;
+        }
+        let light = self.light.normalize();
+        for i in 0..=800 {
+            let z = (i as f64) / 40.0 - 4.0;
+            let plane = Plane {
+                point: light,
+                offset: z,
+            };
+            for face in self.faces.iter() {
+                if face.culled {
+                    continue;
+                }
+                let clip_rule = ClipRule {
+                    invert: false,
+                    boundary_included: false,
+                };
+                let res = face.as_triangle().plane_intersection(&plane);
+                match res.len() {
+                    0 => {}
+                    1 => {}
+                    3 => {
+                        // TODO: this should be some kinda line i think
+                    }
+                    4 => {
+                        // we are in floating point hell
+                    }
+                    2 => {
+                        let line = [project(res[0]), project(res[1])];
+                        let mut contour = Contour {
+                            line: Line {
+                                a: line[0],
+                                b: line[1],
+                            },
+                            face_id: face.id,
+                            cut: vec![],
+                        };
+                        let mut subj: Vec<Vec<Vec<Point>>> = vec![vec![]];
+                        // join the haircut into a clip mask
+                        for t in face.haircut.iter() {
+                            let clip = [t.a, t.b, t.c];
+                            let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
+                            subj = result;
+                        }
+                        for shape in subj {
+                            let result = line.clip_by(&shape, FillRule::NonZero, clip_rule);
+                            for line in result {
+                                contour.cut.push(Line {
+                                    a: line[0],
+                                    b: line[1],
+                                });
+                            }
+                        }
+                        if !contour.cut.is_empty() {
+                            self.latitude_contours.push(contour);
                         }
                     }
                     n => unimplemented!("wtf {}", n),
