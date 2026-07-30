@@ -498,11 +498,11 @@ impl AppState {
             }
         }
         */
-        // for edge in self.edges.iter() {
-        //     for cut_line in &edge.cut {
-        //         r.draw_line(&cut_line.a, &cut_line.b, ColorType::Black);
-        //     }
-        // }
+        for edge in self.edges.iter() {
+            for cut_line in &edge.cut {
+                r.draw_line(&cut_line.a, &cut_line.b, ColorType::Outline);
+            }
+        }
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
@@ -578,26 +578,26 @@ impl AppState {
             }
         }
         eprintln!("culled {} backfaces", cull_count);
-        // for comb in self.faces.iter().combinations(2) {
-        //     if comb[0].culled == comb[1].culled {
-        //         continue;
-        //     }
-        //     let shared_lines: Vec<_> = comb[0]
-        //         .hair
-        //         .lines()
-        //         .filter(|l| comb[1].hair.has_line(*l))
-        //         .collect();
-        //     let shared_line = match shared_lines[..] {
-        //         [line] => line,
-        //         [] => continue,
-        //         _ => panic!("two faces share more than one line??"),
-        //     };
-        //     self.edges.push(Edge {
-        //         line: shared_line,
-        //         face_ids: vec![comb[0].id, comb[1].id],
-        //         cut: vec![],
-        //     });
-        // }
+        for comb in self.faces.iter().combinations(2) {
+            if comb[0].culled == comb[1].culled {
+                continue;
+            }
+            let shared_lines: Vec<_> = comb[0]
+                .hair
+                .lines()
+                .filter(|l| comb[1].hair.has_line(*l))
+                .collect();
+            let shared_line = match shared_lines[..] {
+                [line] => line,
+                [] => continue,
+                _ => panic!("two faces share more than one line??"),
+            };
+            self.edges.push(Edge {
+                line: shared_line,
+                face_ids: vec![comb[0].id, comb[1].id],
+                cut: vec![],
+            });
+        }
         eprintln!("found {} edges", self.edges.len());
     }
 
@@ -754,7 +754,7 @@ impl AppState {
         self.backface_culling();
         self.partial_culling();
         self.find_contours();
-        self.find_edges();
+        // self.find_edges();
     }
     pub fn re_scale_model(&mut self) {
         let scale_options = [
@@ -795,14 +795,15 @@ impl AppState {
             let result = subj.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
             subj = result;
         }
-        for i in 0..=200 {
-            let z = (i as f64) / 40.0 - 2.0;
+        for i in 0..=800 {
+            let z = (i as f64) / 40.0 - 4.0;
             let plane = Plane {
                 point: Point {
-                    x: 0.0,
-                    y: 1.0,
-                    z: 0.0,
-                },
+                    x: 1.0,
+                    y: -2.0,
+                    z: -0.5,
+                }
+                .normalize(),
                 offset: z,
             };
             for face in self.faces.iter() {
