@@ -28,23 +28,31 @@ pub struct Navigator {
 
 impl Navigator {
     pub fn new() -> Self {
-        let from_disk = fs::read_to_string("nav_state.json")
-            .map_err(|_| ())
-            .and_then(|s| serde_json::from_str::<Navigator>(&s).map_err(|_| ()));
-        match from_disk {
-            Ok(data) => data,
-            Err(_) => {
-                println!("no 'nav_state.json' file found");
-                let mut me = Navigator {
-                    stack: vec![],
-                    redo: vec![],
-                    zoom: AnimatedBoundingBox::new(Self::default_zoom()),
-                    clip: true,
-                };
-                me.reset_zoom();
-                me
-            }
-        }
+        let mut me = Navigator {
+            stack: vec![],
+            redo: vec![],
+            zoom: AnimatedBoundingBox::new(Self::default_zoom()),
+            clip: true,
+        };
+        me.reset_zoom();
+        me
+        // let from_disk = fs::read_to_string("nav_state.json")
+        //     .map_err(|_| ())
+        //     .and_then(|s| serde_json::from_str::<Navigator>(&s).map_err(|_| ()));
+        // match from_disk {
+        //     Ok(data) => data,
+        //     Err(_) => {
+        //         println!("no 'nav_state.json' file found");
+        //         let mut me = Navigator {
+        //             stack: vec![],
+        //             redo: vec![],
+        //             zoom: AnimatedBoundingBox::new(Self::default_zoom()),
+        //             clip: true,
+        //         };
+        //         me.reset_zoom();
+        //         me
+        //     }
+        // }
     }
 
     pub fn save(&self) {

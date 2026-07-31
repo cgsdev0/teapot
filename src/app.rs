@@ -373,18 +373,18 @@ impl AppState {
             let mut r = HpglRenderer::new();
             self.render(&mut r);
         }
-        if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
-            if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
-                self.nav.go_back();
-                self.restart();
-            }
-        }
-        if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
-            if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
-                self.nav.go_forward();
-                self.restart();
-            }
-        }
+        // if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
+        //     if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
+        //         self.nav.go_back();
+        //         self.restart();
+        //     }
+        // }
+        // if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) {
+        //     if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
+        //         self.nav.go_forward();
+        //         self.restart();
+        //     }
+        // }
         // mouse stuff
         let pos = rl.get_mouse_position();
         if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
