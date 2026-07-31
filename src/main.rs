@@ -6,6 +6,8 @@ struct Args {
     #[arg(long)]
     hpgl: bool,
 }
+use imgui::{Context, FontSource};
+use raylib_imgui_rs::Renderer;
 
 pub mod app;
 pub mod bounding_box;
@@ -29,13 +31,27 @@ fn main() {
         .log_level(raylib::ffi::TraceLogLevel::LOG_NONE)
         .build();
 
+    let mut imgui = Context::create();
+    imgui
+        .fonts()
+        .add_font(&[FontSource::DefaultFontData { config: None }]);
+    let mut renderer = Renderer::create(&mut imgui, &mut rl, &thread);
+
     while !rl.window_should_close() {
-        app.update(&mut rl);
+        renderer.update(&mut imgui, &mut rl);
+        if !imgui.io().want_capture_mouse {
+            app.update(&mut rl);
+        }
+        {
+            let ui = imgui.new_frame();
+            ui.show_demo_window(&mut true);
+        }
         let d = rl.begin_drawing(&thread);
         let mut r = RaylibRenderer {
             d,
             zoom: app.nav.zoom.as_bb(),
         };
         app.render(&mut r);
+        renderer.render(&mut imgui, &mut r.d);
     }
 }
