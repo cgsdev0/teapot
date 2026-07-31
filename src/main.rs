@@ -35,23 +35,20 @@ fn main() {
     imgui
         .fonts()
         .add_font(&[FontSource::DefaultFontData { config: None }]);
+
     let mut renderer = Renderer::create(&mut imgui, &mut rl, &thread);
 
     while !rl.window_should_close() {
         renderer.update(&mut imgui, &mut rl);
         if !imgui.io().want_capture_mouse {
-            app.update(&mut rl);
-        }
-        {
-            let ui = imgui.new_frame();
-            ui.show_demo_window(&mut true);
+            app.update(&mut rl, &mut imgui);
         }
         let d = rl.begin_drawing(&thread);
         let mut r = RaylibRenderer {
             d,
             zoom: app.nav.zoom.as_bb(),
         };
-        app.render(&mut r);
+        app.render(&mut r, &mut imgui);
         renderer.render(&mut imgui, &mut r.d);
     }
 }

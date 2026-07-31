@@ -6,6 +6,7 @@ use i_overlay::float::clip::FloatClip;
 use i_overlay::float::single::SingleFloatOverlay;
 use i_overlay::string::clip::ClipRule;
 use i_triangle::float::triangulatable::Triangulatable;
+use imgui::Context;
 use itertools::Itertools;
 use nalgebra::Perspective3;
 use ordered_float::OrderedFloat;
@@ -20,7 +21,7 @@ use crate::geometry::*;
 use crate::navigator::*;
 use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/bunny.obj");
+const TEAPOT: &str = include_str!("../models/donut.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -352,7 +353,7 @@ impl AppState {
             },
         }
     }
-    pub fn update(&mut self, rl: &mut RaylibHandle) {
+    pub fn update(&mut self, rl: &mut RaylibHandle, imgui: &mut Context) {
         self.nav.zoom.update(rl.get_frame_time() as f64);
         // arrow keys
         // match self.nav.current() {
@@ -371,7 +372,7 @@ impl AppState {
         // };
         if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
             let mut r = HpglRenderer::new();
-            self.render(&mut r);
+            self.render(&mut r, imgui);
         }
         // if rl.is_key_pressed(KeyboardKey::KEY_LEFT) {
         //     if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) {
@@ -442,7 +443,23 @@ impl AppState {
     //     }
     // }
 
-    pub fn render(&mut self, r: &mut impl Renderer) {
+    pub fn render(&mut self, r: &mut impl Renderer, imgui: &mut Context) {
+        // DO UI STUFF
+        r.with_raylib(&mut |_| {
+            let ui = imgui.new_frame();
+            if let Some(_t) = ui.begin_main_menu_bar() {
+                if let Some(_t) = ui.begin_menu("File") {
+                    if ui.menu_item("file") {
+                        println!("file");
+                    }
+                    ui.menu_item("open");
+                }
+            }
+            if let Some(_t) = ui.window("hi").begin() {}
+        });
+
+        // NOW RENDER
+
         r.with_raylib(&mut |d| {
             d.clear_background(Color::WHITE);
         });
@@ -731,7 +748,7 @@ impl AppState {
         let mut vn: Vec<Point> = vec![];
         let theta_y: f64 = std::f64::consts::PI / 2.0;
         let theta_x: f64 = std::f64::consts::PI / 2.0 * 0.2;
-        let theta_x: f64 = 0.0;
+        let theta_x: f64 = PI / 4.0;
         for line in TEAPOT.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
             match parts[0] {
