@@ -163,7 +163,7 @@ impl ColorType {
     }
     pub fn stroke(&self) -> Option<Color> {
         match self {
-            ColorType::Contour => Some(Color::LIME),
+            ColorType::Contour => Some(Color::BLACK),
             ColorType::Outline => Some(Color::RED),
             ColorType::Primary => Some(Color::BLACK),
             ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),

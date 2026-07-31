@@ -37,6 +37,7 @@ pub struct Face {
     pub hair: Triangle,
     pub haircut: Vec<Triangle>,
     pub culled: bool,
+    pub shadowed: bool,
 }
 
 impl PartialOrd for Face {
@@ -251,6 +252,35 @@ fn paper(p: Point) -> (u16, u16) {
     )
 }
 
+pub fn raycast(t: &Triangle, start: &Point, dir: &Point) -> bool {
+    let e1 = t.b - t.a;
+    let e2 = t.c - t.a;
+
+    let pvec = dir.cross(&e2);
+    let det = e1.dot(&pvec);
+
+    // |det| ~ 0 means the ray is parallel to the plane (or the tri is degenerate)
+    if det.abs() < 1e-8 {
+        return false;
+    }
+
+    let inv_det = 1.0 / det;
+    let tvec = *start - t.a;
+
+    let u = tvec.dot(&pvec) * inv_det;
+    if u < 0.0 || u > 1.0 {
+        return false;
+    }
+
+    let qvec = tvec.cross(&e1);
+    let w = dir.dot(&qvec) * inv_det;
+    if w < 0.0 || u + w > 1.0 {
+        return false;
+    }
+
+    let t = e2.dot(&qvec) * inv_det;
+    t >= 1e-6 && t <= f64::INFINITY
+}
 fn project(p: Point) -> Point {
     let mat = Perspective3::new(1.0, 0.5, 1.0, 100.0);
     let res = mat.project_vector(&Vector3::new(p.x, -p.y, p.z));
@@ -316,9 +346,9 @@ impl AppState {
             debug_view: None,
             selection: None,
             light: Point {
-                x: 0.0,
+                x: 0.5,
                 y: -1.0,
-                z: 0.0,
+                z: 0.5,
             },
         }
     }
@@ -414,7 +444,7 @@ impl AppState {
 
     pub fn render(&mut self, r: &mut impl Renderer) {
         r.with_raylib(&mut |d| {
-            d.clear_background(Color::BLACK);
+            d.clear_background(Color::WHITE);
         });
         let view = self.nav.current();
         match view {
@@ -466,21 +496,35 @@ impl AppState {
             if face.culled {
                 continue;
             }
-            // r.draw_triangle(&face.hair, ColorType::Primary);
-            // for line in face.hatch(&light) {
-            //     r.draw_line(&line.a, &line.b, color);
-            // }
+            // r.draw_triangle(&face.hair, ColorType::Contour);
         }
         for contour in self.longitude_contours.iter() {
+            let face = &self.faces[contour.face_id];
+            let normal = face.calc_normal();
+            let dot = self.light.normalize().dot(&normal);
+            if dot > 0.3 && !face.shadowed {
+                continue;
+            }
             for line in contour.cut.iter() {
                 r.draw_line(&line.a, &line.b, ColorType::Contour);
             }
         }
         for contour in self.latitude_contours.iter() {
+            let face = &self.faces[contour.face_id];
+            let normal = face.calc_normal();
+            let dot = self.light.normalize().dot(&normal);
+            if dot > -0.5 && !face.shadowed {
+                continue;
+            }
             for line in contour.cut.iter() {
-                r.draw_line(&line.a, &line.b, ColorType::Blue);
+                r.draw_line(&line.a, &line.b, ColorType::Contour);
             }
         }
+        // for face in self.faces.iter() {
+        //     if face.shadowed {
+        //         r.draw_triangle(&face.hair, ColorType::Pink);
+        //     }
+        // }
         // for contour in &self.shape {
         //     for [a, b] in contour.iter().circular_array_windows::<2>() {
         //         r.draw_line(a, b, ColorType::Outline);
@@ -508,11 +552,11 @@ impl AppState {
             }
         }
         */
-        // for edge in self.edges.iter() {
-        //     for cut_line in &edge.cut {
-        //         r.draw_line(&cut_line.a, &cut_line.b, ColorType::Outline);
-        //     }
-        // }
+        for edge in self.edges.iter() {
+            for cut_line in &edge.cut {
+                r.draw_line(&cut_line.a, &cut_line.b, ColorType::Contour);
+            }
+        }
     }
 
     pub fn pointer_click(&mut self, x: f32, y: f32) {
@@ -686,7 +730,8 @@ impl AppState {
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
         let theta_y: f64 = std::f64::consts::PI / 2.0;
-        let theta_x: f64 = std::f64::consts::PI / 2.0 * 0.1;
+        let theta_x: f64 = std::f64::consts::PI / 2.0 * 0.2;
+        let theta_x: f64 = 0.0;
         for line in TEAPOT.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
             match parts[0] {
@@ -696,9 +741,9 @@ impl AppState {
                         .skip(1)
                         .map(|p| {
                             let parts = p.split("/").collect::<Vec<_>>();
-                            let vertex =
-                                v[parts[0].parse::<usize>().unwrap() - 1].rotate_y(theta_y);
-                            // .rotate_x(theta_x);
+                            let vertex = v[parts[0].parse::<usize>().unwrap() - 1]
+                                .rotate_y(theta_y)
+                                .rotate_x(theta_x);
                             // let vertex = translate(vertex);
                             FacePart {
                                 vertex,
@@ -722,6 +767,7 @@ impl AppState {
                         hair: tri,
                         haircut: vec![tri],
                         culled: false,
+                        shadowed: false,
                     };
                     self.model_bb.expand(&face.eyes.vertex);
                     self.model_bb.expand(&face.noes.vertex);
@@ -765,8 +811,40 @@ impl AppState {
         self.partial_culling();
         self.find_latitude_contours();
         self.find_longitude_contours();
+        self.lightmap();
         // self.find_edges();
     }
+
+    pub fn lightmap(&mut self) {
+        let faces = self.faces.clone();
+        let light2 = -1.0 * self.light;
+        for face in self.faces.iter_mut() {
+            if face.culled {
+                continue;
+            }
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+            for f in faces.iter() {
+                if f.id == face.id {
+                    continue;
+                }
+                if raycast(&f.as_triangle(), &face.eyes.vertex, &light2) {
+                    a = true;
+                }
+                if raycast(&f.as_triangle(), &face.noes.vertex, &light2) {
+                    b = true;
+                }
+                if raycast(&f.as_triangle(), &face.ears.vertex, &light2) {
+                    c = true;
+                }
+                if a && b && c {
+                    face.shadowed = true;
+                }
+            }
+        }
+    }
+
     pub fn re_scale_model(&mut self) {
         let scale_options = [
             (self.model_bb.max.x - self.model_bb.min.x),
@@ -806,8 +884,8 @@ impl AppState {
             subj = result;
         }
         let light = self.light.normalize();
-        for i in 0..=100 {
-            let theta = (i as f64) / 100.0 * 2.0 * std::f64::consts::PI;
+        for i in 0..=120 {
+            let theta = (i as f64) / 120.0 * 2.0 * std::f64::consts::PI;
             let lx = light.x.abs();
             let ly = light.y.abs();
             let lz = light.z.abs();
@@ -911,7 +989,7 @@ impl AppState {
         }
         let light = self.light.normalize();
         for i in 0..=800 {
-            let z = (i as f64) / 40.0 - 4.0;
+            let z = (i as f64) / 20.0 - 4.0;
             let plane = Plane {
                 point: light,
                 offset: z,
