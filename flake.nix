@@ -22,6 +22,7 @@
     {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
+          wayland
         # X11 dependencies
           libx11
           libx11.dev
@@ -29,6 +30,8 @@
           libxi
           libxinerama
           libxrandr
+          gtk3
+          glib
 
           libGL
           glfw3

@@ -11,6 +11,7 @@ use itertools::Itertools;
 use nalgebra::Perspective3;
 use ordered_float::OrderedFloat;
 use raylib::prelude::*;
+use rfd::FileDialog;
 use std::collections::HashSet;
 extern crate nalgebra as na;
 use na::Vector3;
@@ -21,7 +22,7 @@ use crate::geometry::*;
 use crate::navigator::*;
 use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/donut.obj");
+const TEAPOT: &str = include_str!("../models/pi_case.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -131,6 +132,17 @@ impl Face {
             z: a.x * b.y - a.y * b.x,
         }
         .normalize()
+    }
+    pub fn light_normal(&self) -> Point {
+        let mut out: Point = self.calc_normal();
+        if let Some(a) = (self.eyes.normal) {
+            if let Some(b) = (self.noes.normal) {
+                if let Some(c) = self.ears.normal {
+                    out = (a + b + c).normalize();
+                }
+            }
+        }
+        out
     }
     // TODO:
     // - slice model with planes latitudeendicular to light sources
@@ -243,6 +255,7 @@ pub struct AppState {
     pub debug_view: Option<DebugView>,
     pub selection: Option<(Vector2, Vector2)>,
     pub light: Point,
+    pub model_data: String,
 }
 
 #[allow(dead_code)]
@@ -351,6 +364,7 @@ impl AppState {
                 y: -1.0,
                 z: 0.5,
             },
+            model_data: TEAPOT.to_string(),
         }
     }
     pub fn update(&mut self, rl: &mut RaylibHandle, imgui: &mut Context) {
@@ -452,7 +466,16 @@ impl AppState {
                     if ui.menu_item("file") {
                         println!("file");
                     }
-                    ui.menu_item("open");
+                    if ui.menu_item("Open") {
+                        let fname = FileDialog::new()
+                            .add_filter("Wavefront .obj", &["obj"])
+                            .set_directory("./models")
+                            .pick_file();
+                        if let Some(fname) = fname {
+                            self.model_data = std::fs::read_to_string(&fname).unwrap();
+                            self.restart();
+                        }
+                    }
                 }
             }
             if let Some(_t) = ui.window("hi").begin() {}
@@ -537,11 +560,14 @@ impl AppState {
                 r.draw_line(&line.a, &line.b, ColorType::Contour);
             }
         }
-        // for face in self.faces.iter() {
-        //     if face.shadowed {
-        //         r.draw_triangle(&face.hair, ColorType::Pink);
-        //     }
-        // }
+        for face in self.faces.iter() {
+            if face.culled {
+                continue;
+            }
+            for tri in face.haircut.iter() {
+                // r.draw_triangle(tri, ColorType::Pink);
+            }
+        }
         // for contour in &self.shape {
         //     for [a, b] in contour.iter().circular_array_windows::<2>() {
         //         r.draw_line(a, b, ColorType::Outline);
@@ -743,13 +769,15 @@ impl AppState {
         // console::log_1(&format!("view: {:?}", self.view));
         self.edges.clear();
         self.faces.clear();
+        self.latitude_contours.clear();
+        self.longitude_contours.clear();
         self.debug_view = None;
         let mut v: Vec<Point> = vec![];
         let mut vn: Vec<Point> = vec![];
-        let theta_y: f64 = std::f64::consts::PI / 2.0;
+        let theta_y: f64 = std::f64::consts::PI / 2.0 + 0.5;
         let theta_x: f64 = std::f64::consts::PI / 2.0 * 0.2;
-        let theta_x: f64 = PI / 4.0;
-        for line in TEAPOT.lines() {
+        let theta_x: f64 = 0.1;
+        for line in self.model_data.lines() {
             let parts = line.split(" ").collect::<Vec<_>>();
             match parts[0] {
                 "f" => {
@@ -955,13 +983,7 @@ impl AppState {
                 match res.len() {
                     0 => {}
                     1 => {}
-                    3 => {
-                        // TODO: this should be some kinda line i think
-                    }
-                    4 => {
-                        // we are in floating point hell
-                    }
-                    2 => {
+                    4 | 3 | 2 => {
                         let line = [project(res[0]), project(res[1])];
                         let mut contour = Contour {
                             line: Line {
