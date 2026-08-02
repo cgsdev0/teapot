@@ -18,7 +18,7 @@ pub enum AppView {
     NotFound,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Navigator {
     stack: Vec<AppView>,
     redo: Vec<AppView>,

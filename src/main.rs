@@ -20,6 +20,7 @@ use crate::{
     app::*,
     renderer::{HpglRenderer, RaylibRenderer},
 };
+use raylib::prelude::RaylibDraw;
 
 fn main() {
     let mut app = AppState::new();

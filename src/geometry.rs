@@ -9,7 +9,7 @@ use std::array::IntoIter;
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Line {
     pub a: Point,
     pub b: Point,
@@ -258,7 +258,7 @@ impl Sub for Triangle {
     }
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize, Default)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
