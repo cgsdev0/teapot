@@ -24,7 +24,7 @@ use raylib::prelude::RaylibDraw;
 
 fn main() {
     let mut app = AppState::new();
-    app.restart();
+    app.restart(true);
     let args = Args::parse();
     // app.nav.zoom.add_padding(100.0, 100.0);
     let (mut rl, thread) = raylib::init()
