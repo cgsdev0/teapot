@@ -24,6 +24,8 @@
         packages = with pkgs; [
           wayland
         # X11 dependencies
+        gsettings-desktop-schemas
+        adwaita-icon-theme
           libx11
           libx11.dev
           libxcursor
@@ -31,6 +33,7 @@
           libxinerama
           libxrandr
           gtk3
+          gtk4
           glib
 
           libGL

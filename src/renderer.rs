@@ -138,10 +138,8 @@ impl ColorType {
     pub fn pen(&self) -> usize {
         match self {
             // TODO
-            ColorType::Outline => 2,
-            ColorType::Contour => 3,
-            ColorType::Rhs | ColorType::Pink => 6,
-            ColorType::Cut | ColorType::Blue => 7,
+            ColorType::Outline => 6,
+            ColorType::Contour => 7,
             _ => 0,
         }
     }
@@ -164,7 +162,7 @@ impl ColorType {
     pub fn stroke(&self) -> Option<Color> {
         match self {
             ColorType::Contour => Some(Color::BLACK),
-            ColorType::Outline => Some(Color::RED),
+            ColorType::Outline => Some(Color::BLACK),
             ColorType::Primary => Some(Color::BLACK),
             ColorType::Lhs => Some(Color::from_hex("666666").unwrap()),
             ColorType::Rhs => Some(Color::RED),

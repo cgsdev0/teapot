@@ -24,7 +24,7 @@ use crate::geometry::*;
 use crate::navigator::*;
 use crate::renderer::*;
 
-const TEAPOT: &str = include_str!("../models/bunny.obj");
+const TEAPOT: &str = include_str!("../models/dragon.obj");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FacePart {
@@ -898,7 +898,7 @@ impl AppState {
                 }
                 for edge in render.edges.iter() {
                     for cut_line in &edge.cut {
-                        r.draw_line(&cut_line.a, &cut_line.b, ColorType::Contour);
+                        r.draw_line(&cut_line.a, &cut_line.b, ColorType::Outline);
                     }
                 }
             }
