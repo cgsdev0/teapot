@@ -172,9 +172,11 @@ impl HpglRenderer {
     }
     pub fn write(&mut self) {
         writeln!(self.writer, "IN;").unwrap();
-        for (pen, optimizer) in &self.pens {
+        for (pen, optimizer) in self.pens.iter_mut() {
             writeln!(self.writer, "SP{};", pen).unwrap();
-            for path in &optimizer.paths {
+            let mut path = optimizer.paths[0].clone();
+            optimizer.paths.remove(0);
+            loop {
                 let (x, y) = &path[0];
                 writeln!(self.writer, "PU {},{};", x, y).unwrap();
                 let (x, y) = &path[1];
@@ -183,9 +185,51 @@ impl HpglRenderer {
                     let (x, y) = &point;
                     writeln!(self.writer, "PA {},{};", x, y).unwrap();
                 }
+                if optimizer.paths.is_empty() {
+                    break;
+                }
+                let mut min = f64::INFINITY;
+                let end = path[path.len() - 1];
+                let mut closest: Option<Closest> = None;
+                for (i, p) in optimizer.paths.iter().enumerate() {
+                    let d1 = dist(&p[0], &end);
+                    if d1 < min {
+                        min = d1;
+                        closest = Some(Closest::Start(i));
+                    }
+                    let d2 = dist(&p[p.len() - 1], &end);
+                    if d2 < min {
+                        min = d2;
+                        closest = Some(Closest::End(i));
+                    }
+                }
+                match closest {
+                    Some(Closest::Start(i)) => {
+                        path = optimizer.paths.remove(i);
+                    }
+                    Some(Closest::End(i)) => {
+                        path = optimizer.paths.remove(i);
+                    }
+                    None => {
+                        break;
+                    }
+                }
             }
         }
     }
+}
+
+fn dist(a: &(i32, i32), b: &(i32, i32)) -> f64 {
+    let (x1, y1) = a;
+    let (x2, y2) = b;
+    let dx = (x2 - x1) as f64;
+    let dy = (y2 - y1) as f64;
+    dx * dx + dy * dy
+}
+
+enum Closest {
+    Start(usize),
+    End(usize),
 }
 
 fn to_paper(p: &Point) -> (i32, i32) {
