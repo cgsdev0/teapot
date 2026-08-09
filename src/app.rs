@@ -683,6 +683,7 @@ impl AppState {
         if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
             let mut r = HpglRenderer::new();
             self.render(&mut r, imgui);
+            r.optimize();
             r.write();
         }
 

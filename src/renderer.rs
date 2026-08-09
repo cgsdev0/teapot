@@ -75,7 +75,7 @@ impl Optimizer {
         let mut inverts: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
         for (i, path) in self.paths.iter().enumerate() {
             let first = path[0];
-            let last = path[self.paths.len() - 1];
+            let last = path[path.len() - 1];
             if let Some(j) = starts.get(&first) {
                 updated = true;
                 new_paths.push(
@@ -158,6 +158,16 @@ impl HpglRenderer {
             current_pen: 0,
             writer: BufWriter::new(file),
             pens: HashMap::new(),
+        }
+    }
+    pub fn optimize(&mut self) {
+        for (_, optimizer) in self.pens.iter_mut() {
+            loop {
+                let out = optimizer.simplify();
+                if !out {
+                    break;
+                }
+            }
         }
     }
     pub fn write(&mut self) {
