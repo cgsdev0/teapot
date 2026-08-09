@@ -1,4 +1,8 @@
-use std::{fs::File, io::BufWriter, io::Write};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufWriter, Write},
+};
 
 use crate::bounding_box::BoundingBox;
 use raylib::prelude::*;
@@ -56,10 +60,88 @@ impl<'a> Renderer for RaylibRenderer<'a> {
     }
 }
 
+#[derive(Default)]
+pub struct Optimizer {
+    paths: Vec<Vec<(i32, i32)>>,
+}
+
+impl Optimizer {
+    /// returns whether or not it simplified anything
+    fn simplify(&mut self) -> bool {
+        let mut updated = false;
+        let mut new_paths: Vec<Vec<(i32, i32)>> = vec![];
+        let mut starts: HashMap<(i32, i32), usize> = HashMap::new();
+        let mut ends: HashMap<(i32, i32), usize> = HashMap::new();
+        let mut inverts: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
+        for (i, path) in self.paths.iter().enumerate() {
+            let first = path[0];
+            let last = path[self.paths.len() - 1];
+            if let Some(j) = starts.get(&first) {
+                updated = true;
+                new_paths.push(
+                    path.iter()
+                        .rev()
+                        .chain(self.paths[*j].iter().skip(1))
+                        .copied()
+                        .collect(),
+                );
+                starts.remove(&first);
+                ends.remove(inverts.get(&first).unwrap());
+            } else if let Some(j) = starts.get(&last) {
+                updated = true;
+                new_paths.push(
+                    path.iter()
+                        .chain(self.paths[*j].iter().skip(1))
+                        .copied()
+                        .collect(),
+                );
+                starts.remove(&last);
+                ends.remove(inverts.get(&last).unwrap());
+            } else if let Some(j) = ends.get(&first) {
+                updated = true;
+                new_paths.push(
+                    self.paths[*j]
+                        .iter()
+                        .chain(path.iter().skip(1))
+                        .copied()
+                        .collect(),
+                );
+                starts.remove(&first);
+                ends.remove(inverts.get(&first).unwrap());
+            } else if let Some(j) = ends.get(&last) {
+                updated = true;
+                new_paths.push(
+                    self.paths[*j]
+                        .iter()
+                        .chain(path.iter().rev().skip(1))
+                        .copied()
+                        .collect(),
+                );
+                starts.remove(&last);
+                ends.remove(inverts.get(&last).unwrap());
+            } else {
+                starts.insert(first, i);
+                ends.insert(last, i);
+                inverts.insert(first, last);
+                inverts.insert(last, first);
+            }
+        }
+        if updated {
+            for (_, i) in starts {
+                new_paths.push(self.paths[i].clone());
+            }
+            self.paths = new_paths;
+        }
+        updated
+    }
+}
+
 pub struct HpglRenderer {
     current_pen: usize,
     writer: BufWriter<File>,
+    pens: HashMap<usize, Optimizer>,
 }
+
 impl Default for HpglRenderer {
     fn default() -> Self {
         Self::new()
@@ -75,6 +157,23 @@ impl HpglRenderer {
         HpglRenderer {
             current_pen: 0,
             writer: BufWriter::new(file),
+            pens: HashMap::new(),
+        }
+    }
+    pub fn write(&mut self) {
+        writeln!(self.writer, "IN;").unwrap();
+        for (pen, optimizer) in &self.pens {
+            writeln!(self.writer, "SP{};", pen).unwrap();
+            for path in &optimizer.paths {
+                let (x, y) = &path[0];
+                writeln!(self.writer, "PU {},{};", x, y).unwrap();
+                let (x, y) = &path[1];
+                writeln!(self.writer, "PD {},{};", x, y).unwrap();
+                for point in path.iter().skip(2) {
+                    let (x, y) = &point;
+                    writeln!(self.writer, "PA {},{};", x, y).unwrap();
+                }
+            }
         }
     }
 }
@@ -100,14 +199,10 @@ impl Renderer for HpglRenderer {
     fn draw_line(&mut self, p1: &Point, p2: &Point, color: ColorType) {
         let pen = color.pen();
         if pen > 0 {
-            if self.current_pen != pen {
-                writeln!(self.writer, "SP{};", pen);
-                self.current_pen = pen;
-            }
+            let optimizer = self.pens.entry(pen).or_default();
             let (x, y) = to_paper(p1);
-            writeln!(self.writer, "PU {},{};", x, y);
-            let (x, y) = to_paper(p2);
-            writeln!(self.writer, "PD {},{};", x, y);
+            let (x2, y2) = to_paper(p2);
+            optimizer.paths.push(vec![(x, y), (x2, y2)]);
         }
     }
     fn draw_triangle(&mut self, t: &Triangle, color: ColorType) {
